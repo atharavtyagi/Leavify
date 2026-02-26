@@ -1,5 +1,7 @@
 # Leavify - Employee Leave Management System
 
+Live Link: https://leavifyy.vercel.app/
+
 Leavify is a complete, production-ready MERN stack application for managing employee leave requests. It simulates a corporate HR workflow with role-based access control, a modern UI built with Vite and Tailwind CSS, and a robust RESTful API.
 
 ![Leavify Theme](https://via.placeholder.com/800x400.png?text=Leavify+-+Modern+HR+SaaS)
