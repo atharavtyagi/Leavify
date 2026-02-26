@@ -1,0 +1,153 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply text-slate-800 dark:text-zinc-100 font-sans tracking-tight min-h-screen relative overflow-x-hidden transition-colors duration-500;
+    background-color: #fafafa;
+  }
+
+  .dark body {
+    background-color: #050505;
+    /* Deep OLED Black */
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    z-index: -1;
+    background:
+      radial-gradient(circle at 30% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 40%),
+      radial-gradient(circle at 70% 30%, rgba(167, 139, 250, 0.15) 0%, transparent 40%),
+      radial-gradient(circle at 20% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.15) 0%, transparent 40%);
+  }
+
+  .dark body::before {
+    background:
+      radial-gradient(circle at 30% 20%, rgba(139, 92, 246, 0.03) 0%, transparent 40%),
+      radial-gradient(circle at 70% 30%, rgba(167, 139, 250, 0.03) 0%, transparent 40%),
+      radial-gradient(circle at 20% 80%, rgba(236, 72, 153, 0.03) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.03) 0%, transparent 40%);
+  }
+
+  filter: blur(80px);
+  animation: drift 20s infinite alternate linear;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    transform: translate(-2%, 2%) scale(1.05);
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold rounded-xl shadow-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95;
+  }
+
+  .btn-primary {
+    @apply text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-700 hover:to-primary-600 focus:ring-primary-500 shadow-md hover:shadow-lg;
+  }
+
+  .btn-secondary {
+    @apply text-slate-700 dark:text-zinc-400 bg-white dark:bg-[#0f0f11] border border-slate-300 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white focus:ring-primary-500 shadow-sm transition-colors;
+  }
+
+  .btn-danger {
+    @apply text-white bg-red-600 hover:bg-red-700 focus:ring-red-500 shadow-sm transition-colors;
+  }
+
+  .card,
+  .glass-card {
+    @apply bg-white/70 dark:bg-[#0f0f11] backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_#00000008] border border-white/60 dark:border-white/10 overflow-hidden hover:shadow-[0_20px_40px_#0000000f] dark:hover:shadow-[0_20px_40px_#00000030] hover:-translate-y-1 transition-all duration-500;
+  }
+
+  .input-field {
+    @apply block w-full rounded-2xl bg-white/70 dark:bg-[#0f0f11] backdrop-blur-md border border-white/60 dark:border-white/10 shadow-[inset_0_2px_4px_#00000005] focus:border-primary-500 focus:ring-primary-500 hover:bg-white/90 dark:hover:bg-slate-800 sm:text-sm py-3 px-4 transition-all duration-300 text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-slate-500;
+  }
+
+  /* --- React Big Calendar Custom Premium Styling --- */
+  .rbc-calendar {
+    @apply font-sans text-slate-700 dark:text-zinc-400 bg-white/50 dark:bg-[#0f0f11] backdrop-blur-sm rounded-3xl p-4 shadow-sm border border-white/80 dark:border-white/10;
+    min-height: 600px;
+  }
+
+  .rbc-toolbar {
+    @apply mb-6 flex-wrap gap-4;
+  }
+
+  .rbc-toolbar button {
+    @apply text-slate-600 dark:text-zinc-400 bg-white/70 dark:bg-[#16161a] border border-white dark:border-white/10 hover:bg-white dark:hover:bg-slate-600 hover:text-primary-600 dark:hover:text-primary-400 hover:shadow-md transition-all duration-300 rounded-xl px-4 py-2 font-semibold shadow-sm;
+  }
+
+  .rbc-toolbar button:active,
+  .rbc-toolbar button.rbc-active {
+    @apply bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 border-primary-200 dark:border-primary-700/50 shadow-inner translate-y-[1px];
+  }
+
+  .rbc-toolbar .rbc-toolbar-label {
+    @apply font-black text-xl text-slate-800 dark:text-zinc-100 tracking-tight flex-grow text-center min-w-[200px];
+  }
+
+  .rbc-month-view {
+    @apply border border-slate-200/50 dark:border-white/10 rounded-2xl overflow-hidden bg-white/40 dark:bg-[#0f0f11] shadow-inner;
+  }
+
+  .rbc-header {
+    @apply py-3 font-bold text-slate-500 dark:text-zinc-400 text-sm tracking-wider uppercase border-b border-slate-200/50 dark:border-white/10 bg-slate-50/50 dark:bg-[#0f0f11];
+  }
+
+  .rbc-day-bg+.rbc-day-bg,
+  .rbc-month-row+.rbc-month-row {
+    @apply border-slate-200/50 dark:border-white/10;
+  }
+
+  .rbc-day-bg {
+    @apply transition-colors duration-300;
+  }
+
+  .rbc-day-bg:hover {
+    @apply bg-primary-50/30 dark:bg-primary-900/10;
+  }
+
+  .rbc-date-cell {
+    @apply pr-2 pt-2 text-sm font-semibold text-slate-600 dark:text-zinc-400;
+  }
+
+  .rbc-off-range-bg {
+    @apply bg-slate-100/30 dark:bg-[#050505];
+  }
+
+  .rbc-off-range {
+    @apply text-slate-400 dark:text-slate-600;
+  }
+
+  .rbc-today {
+    @apply bg-primary-50/50 dark:bg-primary-900/20;
+  }
+
+  .rbc-date-cell.rbc-now {
+    @apply font-black text-primary-600 dark:text-primary-400;
+  }
+
+  .rbc-event {
+    @apply border-none rounded-lg shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md px-2 py-1 text-xs font-bold tracking-wide;
+  }
+
+  /* Remove default focus outline on events */
+  .rbc-event:focus {
+    @apply outline-none ring-2 ring-white/50 ring-offset-1;
+  }
+}
