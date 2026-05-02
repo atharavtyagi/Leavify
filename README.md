@@ -1,6 +1,6 @@
 # 🌟 Leavify - Enterprise-Grade HR & Leave Management System
 
-![Leavify Hero](https://via.placeholder.com/1200x400.png?text=Leavify+-+Modern+HR+SaaS)
+![Leavify Hero](https://placehold.co/1200x400/2563eb/ffffff?text=Leavify+-+Modern+HR+SaaS)
 
 > A modern, highly scalable, and secure MERN stack application designed to streamline employee leave requests, expense reimbursements, and administrative workflows. Built with cutting-edge technologies, Leavify offers an intuitive user experience with AI-powered assistance and real-time updates.
 
