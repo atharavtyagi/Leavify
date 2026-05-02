@@ -5,7 +5,7 @@ const User = require('../models/User');
 const LeaveBalance = require('../models/LeaveBalance');
 
 // Initialize Gemini API
-const genAI = new GoogleGenerativeAI("AIzaSyCSQuRXOejZJhnxTLs_JLHbEn5T5cEHs4s");
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 class AssistantService {
     static async processQuery(message, user) {
