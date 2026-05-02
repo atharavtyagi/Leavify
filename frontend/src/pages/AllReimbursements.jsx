@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { CurrencyDollarIcon, BanknotesIcon, TrashIcon, CheckCircleIcon, ClockIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { CurrencyDollarIcon, BanknotesIcon, TrashIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
 import EmptyState from '../components/EmptyState';
+import ChatModal from '../components/ChatModal';
 import toast from 'react-hot-toast';
 import { reimbursementService } from '../services/reimbursementService';
 import { STATIC_BASE_URL } from '../services/api';
@@ -9,6 +10,7 @@ const AllReimbursements = () => {
     const [reimbursements, setReimbursements] = useState([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
+    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
     const [stats, setStats] = useState({ total: 0, approvedAmount: 0, pendingAmount: 0 });
 
     useEffect(() => {
@@ -180,8 +182,16 @@ const AllReimbursements = () => {
                                             ${req.amount.toFixed(2)}
                                         </td>
                                         <td className="p-4 text-right">
-                                            <div className="space-x-2 flex justify-end">
-                                                {(req.status === 'Pending' || req.status === 'Manager Approved') && (
+                                            <div className="space-x-2 flex justify-end items-center">
+                                                <button
+                                                    onClick={() => setChatModal({ isOpen: true, contextId: req._id })}
+                                                    className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold disabled:opacity-50 text-sm"
+                                                    title="View Discussion"
+                                                >
+                                                    <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
+                                                    Chat
+                                                </button>
+                                                {(req.status === 'Manager Approved' || (req.status === 'Pending' && req.employee?.role === 'Manager')) && (
                                                     <>
                                                         <button
                                                             onClick={() => handleAction(req._id, 'approve')}
@@ -219,6 +229,14 @@ const AllReimbursements = () => {
                     </table>
                 </div>
             </div>
+
+            <ChatModal
+                isOpen={chatModal.isOpen}
+                onClose={() => setChatModal({ isOpen: false, contextId: null })}
+                contextType="reimbursement"
+                contextId={chatModal.contextId}
+                title="Expense Claim Discussion (Read-Only)"
+            />
         </div>
     );
 };

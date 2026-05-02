@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { PlusIcon, DocumentCheckIcon, CalendarIcon, DocumentTextIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, DocumentCheckIcon, CalendarIcon, DocumentTextIcon, UsersIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import EmptyState from '../components/EmptyState';
+import ChatModal from '../components/ChatModal';
 
 const MyLeaves = () => {
     const { user } = useAuth();
@@ -12,13 +13,15 @@ const MyLeaves = () => {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showApplyModal, setShowApplyModal] = useState(false);
+    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
 
     const [formData, setFormData] = useState({
         type: 'Sick',
         startDate: '',
         endDate: '',
         reason: '',
-        backupEmployee: ''
+        actingManager: '',
+        actingAdminId: ''
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -54,12 +57,13 @@ const MyLeaves = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        console.log('Submitting Leave Form:', formData);
         setIsSubmitting(true);
         try {
             await api.post('/leaves', formData);
             toast.success('Leave applied successfully');
             setShowApplyModal(false);
-            setFormData({ type: 'Sick', startDate: '', endDate: '', reason: '', backupEmployee: '' });
+            setFormData({ type: 'Sick', startDate: '', endDate: '', reason: '', actingManager: '', actingAdminId: '' });
             fetchData();
         } catch (error) {
             const msg = error.response?.data?.error;
@@ -142,6 +146,7 @@ const MyLeaves = () => {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Applied On</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Manager Comment</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Discussion</th>
                         </tr>
                     </thead>
                     <tbody className="bg-transparent divide-y divide-white/20 dark:divide-white/10">
@@ -168,10 +173,10 @@ const MyLeaves = () => {
                                                 </span>
                                             </div>
                                         )}
-                                        {leave.backupEmployee && (
+                                        {leave.actingManager && (
                                             <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 flex flex-col gap-1">
                                                 <div>
-                                                    Cover: {leave.backupEmployee.name}
+                                                    Acting Manager: {leave.actingManager.name}
                                                     <span className={`ml-1 font-semibold ${leave.backupConfirmed ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-500'}`}>
                                                         ({leave.backupConfirmed ? 'Confirmed' : 'Pending'})
                                                     </span>
@@ -195,6 +200,16 @@ const MyLeaves = () => {
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
                                         {leave.managerComment || '-'}
+                                    </td>
+                                    <td className="px-6 py-4 text-right whitespace-nowrap text-sm font-medium">
+                                        <button
+                                            type="button"
+                                            onClick={() => setChatModal({ isOpen: true, contextId: leave._id })}
+                                            className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold shadow-sm border border-indigo-100 dark:border-indigo-800/30"
+                                        >
+                                            <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
+                                            {leave.status === 'Pending' ? 'Discuss' : 'View Chat'}
+                                        </button>
                                     </td>
                                 </tr>
                             ))
@@ -296,38 +311,96 @@ const MyLeaves = () => {
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-400 mb-2">Backup Employee (Optional)</label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                                            <UsersIcon className="h-5 w-5 text-gray-400 dark:text-zinc-500" />
+                                {user?.role === 'Employee' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-zinc-400 mb-2">Backup Employee (Optional)</label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                                <UsersIcon className="h-5 w-5 text-gray-400 dark:text-zinc-500" />
+                                            </div>
+                                            <select
+                                                name="backupEmployee"
+                                                value={formData.backupEmployee}
+                                                onChange={handleChange}
+                                                className="w-full bg-white dark:bg-[#0f0f11] border-none rounded-2xl py-3.5 pl-11 pr-4 shadow-sm focus:ring-2 focus:ring-primary-500 dark:text-zinc-100 outline-none transition-shadow"
+                                            >
+                                                <option value="">-- No Backup Assigned --</option>
+                                                {users
+                                                    .filter(u =>
+                                                        u.role !== 'Admin' &&
+                                                        u._id !== (user?._id || user?.id) &&
+                                                        u.department === user?.department &&
+                                                        (user?.skills || []).some(s => (u.skills || []).includes(s))
+                                                    )
+                                                    .map(u => {
+                                                        const sharedSkills = (user?.skills || []).filter(s => (u.skills || []).includes(s));
+                                                        return (
+                                                            <option key={u._id} value={u._id}>
+                                                                {u.name} {sharedSkills.length > 0 ? `(${sharedSkills.length} Shared Skills)` : ''}
+                                                            </option>
+                                                        );
+                                                    })}
+                                            </select>
                                         </div>
-                                        <select
-                                            name="backupEmployee"
-                                            value={formData.backupEmployee}
-                                            onChange={handleChange}
-                                            className="w-full bg-white dark:bg-[#0f0f11] border-none rounded-2xl py-3.5 pl-11 pr-4 shadow-sm focus:ring-2 focus:ring-primary-500 dark:text-zinc-100 outline-none transition-shadow"
-                                        >
-                                            <option value="">-- No Backup Assigned --</option>
-                                            {users
-                                                .filter(u =>
-                                                    u.role !== 'Admin' &&
-                                                    u._id !== (user?._id || user?.id) &&
-                                                    u.department === user?.department &&
-                                                    (user?.skills || []).some(s => (u.skills || []).includes(s))
-                                                )
-                                                .map(u => {
-                                                    const sharedSkills = (user?.skills || []).filter(s => (u.skills || []).includes(s));
-                                                    return (
-                                                        <option key={u._id} value={u._id}>
-                                                            {u.name} {sharedSkills.length > 0 ? `(${sharedSkills.length} Shared Skills)` : ''}
-                                                        </option>
-                                                    );
-                                                })}
-                                        </select>
+                                        <p className="text-xs text-slate-500 dark:text-zinc-500 mt-2">Select a colleague to cover for you. They must confirm this request.</p>
                                     </div>
-                                    <p className="text-xs text-slate-500 dark:text-zinc-500 mt-2">Select a colleague to cover for you. They must confirm this request.</p>
-                                </div>
+                                )}
+
+                                {user?.role === 'Manager' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-zinc-400 mb-2">Acting Manager (Optional)</label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                                <UsersIcon className="h-5 w-5 text-gray-400 dark:text-zinc-500" />
+                                            </div>
+                                            <select
+                                                name="actingManager"
+                                                value={formData.actingManager}
+                                                onChange={handleChange}
+                                                className="w-full bg-white dark:bg-[#0f0f11] border-none rounded-2xl py-3.5 pl-11 pr-4 shadow-sm focus:ring-2 focus:ring-primary-500 dark:text-zinc-100 outline-none transition-shadow"
+                                            >
+                                                <option value="">-- No Acting Manager Assigned --</option>
+                                                {users
+                                                    .filter(u =>
+                                                        u.role === 'Manager' &&
+                                                        u._id !== (user?._id || user?.id) &&
+                                                        u.department !== user?.department
+                                                    )
+                                                    .map(u => (
+                                                        <option key={u._id} value={u._id}>
+                                                            {u.name} ({u.department})
+                                                        </option>
+                                                    ))}
+                                            </select>
+                                        </div>
+                                        <p className="text-xs text-slate-500 dark:text-zinc-500 mt-2">Select a Manager from another department to cover your approvals.</p>
+                                    </div>
+                                )}
+
+                                {user?.role === 'Admin' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-zinc-400 mb-2">Acting Admin (Optional)</label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                                <UsersIcon className="h-5 w-5 text-gray-400 dark:text-zinc-500" />
+                                            </div>
+                                            <select
+                                                name="actingAdminId"
+                                                value={formData.actingAdminId}
+                                                onChange={handleChange}
+                                                className="w-full bg-white dark:bg-[#0f0f11] border-none rounded-2xl py-3.5 pl-11 pr-4 shadow-sm focus:ring-2 focus:ring-primary-500 dark:text-zinc-100 outline-none transition-shadow"
+                                            >
+                                                <option value="">-- Select Manager to Cover --</option>
+                                                {users
+                                                    .filter(u => u.role === 'Manager')
+                                                    .map(u => (
+                                                        <option key={u._id} value={u._id}>{u.name} ({u.department})</option>
+                                                    ))}
+                                            </select>
+                                        </div>
+                                        <p className="text-xs text-slate-500 dark:text-zinc-500 mt-2">During your leave, they will temporarily get Admin approval privileges.</p>
+                                    </div>
+                                )}
 
                                 {balance && (formData.type === 'Annual' || formData.type === 'Sick' || formData.type === 'Casual') && (
                                     <div className="bg-[#eef2ff] dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-200 p-4 rounded-2xl text-sm border border-indigo-100 dark:border-indigo-800/50 mt-4 leading-relaxed">
@@ -360,6 +433,14 @@ const MyLeaves = () => {
                     </div>
                 </div>
             )}
+
+            <ChatModal
+                isOpen={chatModal.isOpen}
+                onClose={() => setChatModal({ isOpen: false, contextId: null })}
+                contextType="leave"
+                contextId={chatModal.contextId}
+                title="Leave Application Discussion"
+            />
         </div>
     );
 };

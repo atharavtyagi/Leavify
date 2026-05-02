@@ -4,12 +4,13 @@ const {
     getLeave,
     applyLeave,
     updateLeaveStatus,
-    deleteLeave
+    deleteLeave,
+    reviewActingManagerLeave
 } = require('../controllers/leaveController');
 
 const router = express.Router();
 
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, authorize, checkDelegation } = require('../middleware/authMiddleware');
 
 // Include other resource routers
 const backupRouter = require('./backupRoutes');
@@ -21,7 +22,7 @@ router.use('/:id/backup', backupRouter);
 
 router
     .route('/')
-    .get(getLeaves)
+    .get(checkDelegation, getLeaves)
     .post(applyLeave);
 
 router
@@ -29,5 +30,7 @@ router
     .get(getLeave)
     .put(authorize('Admin', 'Manager'), updateLeaveStatus)
     .delete(deleteLeave);
+
+router.post('/:id/review', authorize('Manager', 'Admin'), reviewActingManagerLeave);
 
 module.exports = router;

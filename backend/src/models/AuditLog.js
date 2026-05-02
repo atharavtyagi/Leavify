@@ -3,22 +3,33 @@ const mongoose = require('mongoose');
 const AuditLogSchema = new mongoose.Schema({
     action: {
         type: String,
-        required: true
+        required: true,
+        index: true
     },
-    user: {
+    performedBy: {
         type: mongoose.Schema.ObjectId,
         ref: 'User',
+        required: true,
+        index: true
+    },
+    role: {
+        type: String,
+        enum: ['Admin', 'Manager', 'Employee', 'System'],
         required: true
     },
-    targetId: {
-        type: mongoose.Schema.ObjectId
+    targetUser: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User',
+        index: true
     },
-    details: {
-        type: Object
+    metadata: {
+        type: Object,
+        default: {}
     },
     timestamp: {
         type: Date,
-        default: Date.now
+        default: Date.now,
+        index: true
     }
 });
 

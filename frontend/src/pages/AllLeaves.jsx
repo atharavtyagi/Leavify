@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { ChatBubbleLeftEllipsisIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import ChatModal from '../components/ChatModal';
 
 const AllLeaves = () => {
     const [leaves, setLeaves] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
 
     useEffect(() => {
         fetchLeaves();
@@ -18,6 +21,16 @@ const AllLeaves = () => {
             toast.error('Failed to fetch leaves');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleAction = async (id, status) => {
+        try {
+            await api.put(`/leaves/${id}`, { status });
+            toast.success(`Leave ${status.toLowerCase()} successfully`);
+            fetchLeaves();
+        } catch (error) {
+            toast.error(error.response?.data?.error || `Failed to ${status.toLowerCase()} leave`);
         }
     };
 
@@ -50,6 +63,7 @@ const AllLeaves = () => {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Leave Type</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Dates</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Discussion</th>
                         </tr>
                     </thead>
                     <tbody className="bg-transparent divide-y divide-white/20 dark:divide-white/10">
@@ -83,12 +97,52 @@ const AllLeaves = () => {
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {getStatusBadge(leave.status)}
                                     </td>
+                                    <td className="px-6 py-4 text-right whitespace-nowrap text-sm font-medium">
+                                        <div className="flex justify-end space-x-2">
+                                            {leave.status === 'Pending' && leave.employee?.role === 'Manager' && (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleAction(leave._id, 'Approved')}
+                                                        className="inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold"
+                                                        title="Approve Leave"
+                                                    >
+                                                        <CheckCircleIcon className="w-4 h-4 mr-1.5" />
+                                                        Approve
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleAction(leave._id, 'Rejected')}
+                                                        className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60 rounded-xl transition-colors font-semibold"
+                                                        title="Reject Leave"
+                                                    >
+                                                        <XCircleIcon className="w-4 h-4 mr-1.5" />
+                                                        Reject
+                                                    </button>
+                                                </>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setChatModal({ isOpen: true, contextId: leave._id })}
+                                                className="inline-flex items-center px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 rounded-xl transition-colors font-semibold text-xs border border-slate-200 dark:border-white/10"
+                                            >
+                                                <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
+                                                View Chat
+                                            </button>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))
                         )}
                     </tbody>
                 </table>
             </div>
+
+            <ChatModal
+                isOpen={chatModal.isOpen}
+                onClose={() => setChatModal({ isOpen: false, contextId: null })}
+                contextType="leave"
+                contextId={chatModal.contextId}
+                title="Leave Application Discussion (Read-Only)"
+            />
         </div>
     );
 };

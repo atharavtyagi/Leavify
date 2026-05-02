@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { PlusIcon, BanknotesIcon, CurrencyDollarIcon, DocumentIcon, DocumentCheckIcon, CalendarIcon, DocumentTextIcon, LinkIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, BanknotesIcon, CurrencyDollarIcon, DocumentIcon, DocumentCheckIcon, CalendarIcon, DocumentTextIcon, LinkIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
 import EmptyState from '../components/EmptyState';
+import ChatModal from '../components/ChatModal';
 import toast from 'react-hot-toast';
 import { reimbursementService } from '../services/reimbursementService';
 
@@ -9,6 +10,7 @@ const MyReimbursements = () => {
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('All');
     const [showApplyModal, setShowApplyModal] = useState(false);
+    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         expenseType: 'Travel',
@@ -175,6 +177,7 @@ const MyReimbursements = () => {
                                 <th className="p-4 text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Description</th>
                                 <th className="p-4 text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Status</th>
                                 <th className="p-4 text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Reviewed</th>
+                                <th className="p-4 text-right text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Discussion</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/40 dark:divide-white/10">
@@ -207,6 +210,16 @@ const MyReimbursements = () => {
                                         </td>
                                         <td className="p-4 text-xs font-semibold text-slate-500 dark:text-zinc-400 whitespace-nowrap">
                                             {req.reviewedAt ? new Date(req.reviewedAt).toLocaleDateString() : '-'}
+                                        </td>
+                                        <td className="p-4 text-right whitespace-nowrap">
+                                            <button
+                                                type="button"
+                                                onClick={() => setChatModal({ isOpen: true, contextId: req._id })}
+                                                className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold shadow-sm border border-indigo-100 dark:border-indigo-800/30 text-sm"
+                                            >
+                                                <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
+                                                {req.status === 'Pending' || req.status === 'Manager Approved' ? 'Discuss' : 'View Chat'}
+                                            </button>
                                         </td>
                                     </tr>
                                 ))
@@ -315,6 +328,14 @@ const MyReimbursements = () => {
                     </div>
                 </div>
             )}
+
+            <ChatModal
+                isOpen={chatModal.isOpen}
+                onClose={() => setChatModal({ isOpen: false, contextId: null })}
+                contextType="reimbursement"
+                contextId={chatModal.contextId}
+                title="Expense Claim Discussion"
+            />
         </div>
     );
 };

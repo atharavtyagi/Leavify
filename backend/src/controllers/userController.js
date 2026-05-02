@@ -1,5 +1,5 @@
-const ErrorResponse = require('../utils/errorResponse');
 const User = require('../models/User');
+const auditLogger = require('../utils/auditLogger');
 
 // @desc    Get all users
 // @route   GET /api/users
@@ -51,6 +51,17 @@ exports.createUser = async (req, res, next) => {
             success: true,
             data: user
         });
+
+        await auditLogger({
+            action: 'USER_CREATED',
+            performedBy: req.user.id,
+            role: req.user.role,
+            targetUser: user._id,
+            metadata: {
+                role: user.role,
+                department: user.department
+            }
+        });
     } catch (err) {
         if (err.name === 'ValidationError') {
             const messages = Object.values(err.errors).map(val => val.message);
@@ -87,6 +98,26 @@ exports.updateUser = async (req, res, next) => {
             success: true,
             data: user
         });
+
+        if (req.body.role && oldUser && oldUser.role !== req.body.role) {
+            await auditLogger({
+                action: 'ROLE_CHANGED',
+                performedBy: req.user.id,
+                role: req.user.role,
+                targetUser: user._id,
+                metadata: {
+                    oldRole: oldUser.role,
+                    newRole: req.body.role
+                }
+            });
+        } else {
+            await auditLogger({
+                action: 'USER_UPDATED',
+                performedBy: req.user.id,
+                role: req.user.role,
+                targetUser: user._id
+            });
+        }
     } catch (err) {
         res.status(500).json({ success: false, error: 'Server Error' });
     }
@@ -106,6 +137,17 @@ exports.deleteUser = async (req, res, next) => {
         res.status(200).json({
             success: true,
             data: {}
+        });
+
+        await auditLogger({
+            action: 'USER_DELETED',
+            performedBy: req.user.id,
+            role: req.user.role,
+            targetUser: user._id,
+            metadata: {
+                name: user.name,
+                email: user.email
+            }
         });
     } catch (err) {
         res.status(500).json({ success: false, error: 'Server Error' });

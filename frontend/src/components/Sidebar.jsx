@@ -11,7 +11,9 @@ import {
     CalendarIcon,
     Cog8ToothIcon,
     CurrencyDollarIcon,
-    BanknotesIcon
+    BanknotesIcon,
+    ShieldCheckIcon,
+    ClockIcon
 } from '@heroicons/react/24/outline';
 
 const Sidebar = () => {
@@ -22,14 +24,19 @@ const Sidebar = () => {
         { name: 'My Leaves', path: '/my-leaves', icon: DocumentTextIcon },
         { name: 'Reimbursements', path: '/my-reimbursements', icon: CurrencyDollarIcon },
         { name: 'Calendar', path: '/calendar', icon: CalendarIcon },
+        { name: 'My Activity', path: '/my-activity', icon: ClockIcon },
         { name: 'Settings', path: '/settings', icon: Cog8ToothIcon },
     ];
 
     const managerLinks = [
         { name: 'Dashboard', path: '/dashboard', icon: HomeIcon },
+        { name: 'My Leaves', path: '/my-leaves', icon: DocumentTextIcon },
+        { name: 'My Expenses', path: '/my-reimbursements', icon: CurrencyDollarIcon },
         { name: 'Leave Requests', path: '/leave-requests', icon: ClipboardDocumentCheckIcon },
-        { name: 'Reimbursement Claims', path: '/reimbursement-requests', icon: CurrencyDollarIcon },
+        { name: 'Team Expenses', path: '/reimbursement-requests', icon: CurrencyDollarIcon },
+        { name: 'Audit Logs', path: '/audit-logs', icon: ShieldCheckIcon },
         { name: 'Calendar', path: '/calendar', icon: CalendarIcon },
+        { name: 'My Activity', path: '/my-activity', icon: ClockIcon },
         { name: 'Settings', path: '/settings', icon: Cog8ToothIcon },
     ];
 
@@ -37,14 +44,27 @@ const Sidebar = () => {
         { name: 'Dashboard', path: '/dashboard', icon: HomeIcon },
         { name: 'Manage Users', path: '/manage-users', icon: UsersIcon },
         { name: 'Manage Balances', path: '/manage-balances', icon: ScaleIcon },
+        { name: 'My Leaves', path: '/my-leaves', icon: DocumentTextIcon },
+        { name: 'My Expenses', path: '/my-reimbursements', icon: CurrencyDollarIcon },
         { name: 'All Leaves', path: '/all-leaves', icon: ClipboardDocumentCheckIcon },
-        { name: 'All Reimbursements', path: '/all-reimbursements', icon: BanknotesIcon },
+        { name: 'All Expenses', path: '/all-reimbursements', icon: BanknotesIcon },
+        { name: 'Audit Logs', path: '/audit-logs', icon: ShieldCheckIcon },
+        { name: 'Delegation Review', path: '/admin-review', icon: ClipboardDocumentCheckIcon },
         { name: 'Calendar', path: '/calendar', icon: CalendarIcon },
+        { name: 'My Activity', path: '/my-activity', icon: ClockIcon },
         { name: 'Settings', path: '/settings', icon: Cog8ToothIcon },
     ];
 
     let links = employeeLinks;
-    if (user?.role === 'Manager') links = managerLinks;
+    if (user?.role === 'Manager') {
+        links = [...managerLinks];
+        if (user.isActingAdmin) {
+            links.splice(4, 0, 
+                { name: 'Proxy Leaves', path: '/all-leaves', icon: ClipboardDocumentCheckIcon },
+                { name: 'Proxy Expenses', path: '/all-reimbursements', icon: BanknotesIcon }
+            );
+        }
+    }
     if (user?.role === 'Admin') links = adminLinks;
 
     return (

@@ -21,6 +21,12 @@ import MyReimbursements from './pages/MyReimbursements';
 import ReimbursementRequests from './pages/ReimbursementRequests';
 import AllReimbursements from './pages/AllReimbursements';
 
+// Enterprise Pages
+import AdminReview from './pages/AdminReview';
+import AuditDashboard from './pages/AuditDashboard';
+import MyActivity from './pages/MyActivity';
+import ReviewActingDecisions from './pages/ReviewActingDecisions';
+
 function App() {
   return (
     <BrowserRouter>
@@ -36,6 +42,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/calendar" element={<CalendarView />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/my-activity" element={<MyActivity />} />
 
             {/* Employee Routes */}
             <Route path="/my-leaves" element={<MyLeaves />} />
@@ -45,6 +52,8 @@ function App() {
             <Route element={<ProtectedRoute allowedRoles={['Manager', 'Admin']} />}>
               <Route path="/leave-requests" element={<LeaveRequests />} />
               <Route path="/reimbursement-requests" element={<ReimbursementRequests />} />
+              <Route path="/audit-logs" element={<AuditDashboard />} />
+              <Route path="/manager/review-acting-decisions" element={<ReviewActingDecisions />} />
             </Route>
 
             {/* Admin Only Routes */}
@@ -53,6 +62,7 @@ function App() {
               <Route path="/manage-balances" element={<ManageBalances />} />
               <Route path="/all-leaves" element={<AllLeaves />} />
               <Route path="/all-reimbursements" element={<AllReimbursements />} />
+              <Route path="/admin-review" element={<AdminReview />} />
             </Route>
           </Route>
         </Route>

@@ -13,8 +13,8 @@ exports.confirmBackup = async (req, res, next) => {
         }
 
         // Verify the user is actually the assigned backup
-        if (!leave.backupEmployee || leave.backupEmployee.toString() !== req.user.id) {
-            console.log('--- 403 Mismatch! leave.backupEmployee:', leave.backupEmployee, 'req.user.id:', req.user.id);
+        if (!leave.actingManager || leave.actingManager.toString() !== req.user.id) {
+            console.log('--- 403 Mismatch! leave.actingManager:', leave.actingManager, 'req.user.id:', req.user.id);
             return res.status(403).json({ success: false, error: 'Not authorized to confirm this backup request' });
         }
 
@@ -50,13 +50,13 @@ exports.declineBackup = async (req, res, next) => {
             return res.status(404).json({ success: false, error: 'Leave not found' });
         }
 
-        if (!leave.backupEmployee || leave.backupEmployee.toString() !== req.user.id) {
-            console.log('--- 403 Mismatch! leave.backupEmployee:', leave.backupEmployee, 'req.user.id:', req.user.id);
+        if (!leave.actingManager || leave.actingManager.toString() !== req.user.id) {
+            console.log('--- 403 Mismatch! leave.actingManager:', leave.actingManager, 'req.user.id:', req.user.id);
             return res.status(403).json({ success: false, error: 'Not authorized to decline this backup request' });
         }
 
-        // Here we just clear the backupEmployee field to indicate it was declined and no longer assigned
-        leave.backupEmployee = undefined;
+        // Here we just clear the actingManager field to indicate it was declined and no longer assigned
+        leave.actingManager = undefined;
         leave.backupConfirmed = false;
         leave.backupConfirmedAt = undefined;
         if (req.body.comment) {

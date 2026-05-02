@@ -41,7 +41,44 @@ const ReimbursementSchema = new mongoose.Schema({
     reviewedAt: {
         type: Date,
         default: null
-    }
+    },
+    // Delegation / Enterprise Admin Features
+    approvedByRole: {
+        type: String,
+        enum: ['System', 'Manager', 'ActingManager', 'ActingAdmin', 'Admin']
+    },
+    approvedByActingAdmin: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+    },
+    approvedByActingManager: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+    },
+    needsManagerReview: {
+        type: Boolean,
+        default: false
+    },
+    managerReviewedAt: {
+        type: Date
+    },
+    actingFor: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+    },
+    reviewedByManager: {
+        type: Boolean,
+        default: false
+    },
+    reviewedAction: {
+        type: String,
+        enum: ['ACCEPTED', 'OVERRIDDEN']
+    },
+    verifiedByAdmin: {
+        type: Boolean,
+        default: false
+    },
+    verifiedAt: Date
 }, {
     timestamps: true
 });

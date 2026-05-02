@@ -48,6 +48,10 @@ const UserSchema = new mongoose.Schema({
         minlength: 6,
         select: false,
     },
+    refreshToken: {
+        type: String,
+        select: false
+    },
     createdAt: {
         type: Date,
         default: Date.now,
@@ -64,10 +68,17 @@ UserSchema.pre('save', async function () {
     this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Sign JWT and return
-UserSchema.methods.getSignedJwtToken = function () {
+// Sign Access JWT and return
+UserSchema.methods.getSignedAccessToken = function () {
     return jwt.sign({ id: this._id, role: this.role }, process.env.JWT_SECRET, {
-        expiresIn: '30d',
+        expiresIn: '15m',
+    });
+};
+
+// Sign Refresh JWT and return
+UserSchema.methods.getSignedRefreshToken = function () {
+    return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
+        expiresIn: '7d',
     });
 };
 

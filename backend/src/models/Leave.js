@@ -41,8 +41,55 @@ const LeaveSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    // Delegation / Enterprise Admin Features
+    actingAdminId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+    },
+    actingStartDate: Date,
+    actingEndDate: Date,
+    actingAdminActive: {
+        type: Boolean,
+        default: false
+    },
+    approvedByRole: {
+        type: String,
+        enum: ['System', 'Manager', 'ActingManager', 'ActingAdmin', 'Admin']
+    },
+    approvedByActingAdmin: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+    },
+    approvedByActingManager: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+    },
+    needsManagerReview: {
+        type: Boolean,
+        default: false
+    },
+    managerReviewedAt: {
+        type: Date
+    },
+    actingFor: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+    },
+    reviewedByManager: {
+        type: Boolean,
+        default: false
+    },
+    reviewedAction: {
+        type: String,
+        enum: ['ACCEPTED', 'OVERRIDDEN']
+    },
+    verifiedByAdmin: {
+        type: Boolean,
+        default: false
+    },
+    verifiedAt: Date,
     // Extensions
-    backupEmployee: {
+    actingManager: {
         type: mongoose.Schema.ObjectId,
         ref: 'User'
     },

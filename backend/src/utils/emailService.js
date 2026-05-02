@@ -80,7 +80,6 @@ const getBaseHTML = (title, content) => `
 
 exports.sendLeaveAppliedEmail = (managers, employeeName, leaveDetails) => {
     managers.forEach(manager => {
-        // Execute asynchronously, non-blocking
         Promise.resolve().then(() => {
             const html = getBaseHTML(
                 'New Leave Request Submitted',
@@ -101,6 +100,124 @@ exports.sendLeaveAppliedEmail = (managers, employeeName, leaveDetails) => {
                 subject: `Leave Request: ${employeeName} - Action Required`,
                 html
             });
+        });
+    });
+};
+
+exports.sendLeaveFYIEmail = (managers, employeeName, leaveDetails) => {
+    managers.forEach(manager => {
+        Promise.resolve().then(() => {
+            const html = getBaseHTML(
+                'Leave Request Notification (FYI)',
+                `
+                <p>Hello ${manager.name},</p>
+                <p><strong>${employeeName}</strong> has submitted a leave request. This is a notification only, as you are currently on leave.</p>
+                <div class="box">
+                    <p><strong>Type:</strong> ${leaveDetails.type}</p>
+                    <p><strong>Dates:</strong> ${new Date(leaveDetails.startDate).toDateString()} to ${new Date(leaveDetails.endDate).toDateString()}</p>
+                    <p><strong>Status:</strong> <span class="badge badge-pending">Pending Delegation</span></p>
+                </div>
+                <p>Your designated Acting Manager has been notified to handle this request.</p>
+                `
+            );
+            sendEmail({
+                to: manager.email,
+                subject: `FYI: Leave Request submitted by ${employeeName}`,
+                html
+            });
+        });
+    });
+};
+
+exports.sendReimbursementAppliedEmail = (managers, employeeName, reimbursement) => {
+    managers.forEach(manager => {
+        Promise.resolve().then(() => {
+            const html = getBaseHTML(
+                'New Reimbursement Claim submitted',
+                `
+                <p>Hello ${manager.name},</p>
+                <p><strong>${employeeName}</strong> has submitted a new reimbursement claim for your approval.</p>
+                <div class="box">
+                    <p><strong>Type:</strong> ${reimbursement.expenseType}</p>
+                    <p><strong>Amount:</strong> $${reimbursement.amount}</p>
+                    <p><strong>Date:</strong> ${new Date(reimbursement.expenseDate).toDateString()}</p>
+                    <p><strong>Description:</strong> ${reimbursement.description}</p>
+                </div>
+                <p>Please verify the receipt and approve/reject in your manager dashboard.</p>
+                `
+            );
+            sendEmail({
+                to: manager.email,
+                subject: `Reimbursement Claim: ${employeeName} - Action Required`,
+                html
+            });
+        });
+    });
+};
+
+exports.sendReimbursementFYIEmail = (managers, employeeName, reimbursement) => {
+    managers.forEach(manager => {
+        Promise.resolve().then(() => {
+            const html = getBaseHTML(
+                'Reimbursement Claim Notification (FYI)',
+                `
+                <p>Hello ${manager.name},</p>
+                <p><strong>${employeeName}</strong> has submitted a reimbursement claim. This is an informational notice while you are on leave.</p>
+                <div class="box">
+                    <p><strong>Amount:</strong> $${reimbursement.amount}</p>
+                    <p><strong>Description:</strong> ${reimbursement.description}</p>
+                </div>
+                <p>Your covering manager will process this request.</p>
+                `
+            );
+            sendEmail({
+                to: manager.email,
+                subject: `FYI: Reimbursement Claim by ${employeeName}`,
+                html
+            });
+        });
+    });
+};
+
+exports.sendReimbursementToFinanceEmail = (financeUsers, employeeName, reimbursement) => {
+    financeUsers.forEach(user => {
+        Promise.resolve().then(() => {
+            const html = getBaseHTML(
+                'Reimbursement Approved - Processing Required',
+                `
+                <p>Hello Finance Team,</p>
+                <p>A reimbursement claim for <strong>${employeeName}</strong> has been approved by their manager and is now ready for final processing/payment.</p>
+                <div class="box">
+                    <p><strong>Employee:</strong> ${employeeName}</p>
+                    <p><strong>Amount:</strong> $${reimbursement.amount}</p>
+                    <p><strong>Type:</strong> ${reimbursement.expenseType}</p>
+                </div>
+                <p>Please process the payment as per company policy.</p>
+                `
+            );
+            sendEmail({
+                to: user.email,
+                subject: `Action Required: Process Reimbursement for ${employeeName}`,
+                html
+            });
+        });
+    });
+};
+
+exports.sendReimbursementStatusEmail = (employee, status, reimbursement) => {
+    Promise.resolve().then(() => {
+        let badgeClass = status === 'Approved' ? 'badge-approved' : 'badge-rejected';
+        const html = getBaseHTML(
+            `Reimbursement ${status}`,
+            `
+            <p>Hello ${employee.name},</p>
+            <p>Your reimbursement claim for <strong>$${reimbursement.amount}</strong> (${reimbursement.expenseType}) has been <span class="badge ${badgeClass}">${status}</span>.</p>
+            `
+        );
+        sendEmail({
+            to: employee.email,
+            subject: `Reimbursement Status Updated: ${status}`,
+            html
         });
     });
 };

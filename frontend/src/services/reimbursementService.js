@@ -34,11 +34,17 @@ const deleteReimbursement = async (id) => {
     return res.data;
 };
 
+const reviewReimbursement = async (id) => {
+    const res = await api.post(`/reimbursements/${id}/review`);
+    return res.data;
+};
+
 export const reimbursementService = {
     applyReimbursement,
     getMyReimbursements,
     getAllReimbursements,
     approveReimbursement,
     rejectReimbursement,
-    deleteReimbursement
+    deleteReimbursement,
+    reviewReimbursement
 };

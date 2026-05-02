@@ -18,6 +18,10 @@ export const ProtectedRoute = ({ allowedRoles }) => {
     }
 
     if (allowedRoles && !allowedRoles.includes(user.role)) {
+        // Special exemption: If checking for Admin and the user is an active acting admin, let them through
+        if (allowedRoles.includes('Admin') && user.isActingAdmin) {
+            return <Outlet />;
+        }
         return <Navigate to="/dashboard" replace />;
     }
 

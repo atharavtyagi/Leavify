@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircleIcon, XCircleIcon, BanknotesIcon, CurrencyDollarIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, XCircleIcon, BanknotesIcon, CurrencyDollarIcon, ClockIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
 import EmptyState from '../components/EmptyState';
+import ChatModal from '../components/ChatModal';
 import toast from 'react-hot-toast';
 import { reimbursementService } from '../services/reimbursementService';
 import { STATIC_BASE_URL } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const ReimbursementRequests = () => {
     const [reimbursements, setReimbursements] = useState([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
+    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
     const [filter, setFilter] = useState('Pending');
     const [stats, setStats] = useState({ total: 0, pendingCount: 0, approvedValue: 0 });
+    const { user } = useAuth();
+    const isViewOnly = user?.isCurrentlyOnLeave;
 
     useEffect(() => {
         fetchReimbursements();
@@ -63,8 +68,25 @@ const ReimbursementRequests = () => {
             setActionLoading(null);
         }
     };
+    
+    const handleAcknowledge = async (id) => {
+        setActionLoading(id);
+        try {
+            await reimbursementService.reviewReimbursement(id);
+            toast.success('Approval acknowledged successfully.');
+            fetchReimbursements();
+        } catch (error) {
+            toast.error(error.response?.data?.error || 'Failed to acknowledge');
+        } finally {
+            setActionLoading(null);
+        }
+    };
 
-    const filteredReimbursements = reimbursements.filter(req => filter === 'All' ? true : req.status === filter);
+    const filteredReimbursements = reimbursements.filter(req => {
+        if (filter === 'All') return true;
+        if (filter === 'RequiresReview') return req.needsManagerReview;
+        return req.status === filter;
+    });
 
     if (loading) {
         return (
@@ -89,6 +111,7 @@ const ReimbursementRequests = () => {
                     >
                         <option value="All">All Requests</option>
                         <option value="Pending">Pending Only</option>
+                        <option value="RequiresReview">Requires Review</option>
                         <option value="Manager Approved">Manager Approved</option>
                         <option value="Rejected">Rejected Only</option>
                     </select>
@@ -174,13 +197,20 @@ const ReimbursementRequests = () => {
                                             {new Date(req.expenseDate).toLocaleDateString()}
                                             <div className="mt-1">
                                                 <span className={`px - 2 py - 0.5 rounded - md text - [10px] font - black uppercase tracking - wider ${req.status === 'Pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400' :
-                                                        req.status === 'Manager Approved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400' :
-                                                            req.status === 'Approved' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400' :
-                                                                'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                                                    req.status === 'Manager Approved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400' :
+                                                        req.status === 'Approved' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400' :
+                                                            'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
                                                     } `}>
                                                     {req.status}
                                                 </span>
                                             </div>
+                                            {req.needsManagerReview && (
+                                                <div className="mt-1">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                                                        Required: Manager Review
+                                                    </span>
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="p-4">
                                             <p className="text-sm font-bold text-slate-700 dark:text-zinc-300">{req.expenseType}</p>
@@ -197,26 +227,55 @@ const ReimbursementRequests = () => {
                                         </td>
                                         <td className="p-4 text-right">
                                             {req.status === 'Pending' ? (
-                                                <div className="space-x-2 flex justify-end">
+                                                <div className="space-x-2 flex justify-end items-center">
+                                                    <button
+                                                        onClick={() => setChatModal({ isOpen: true, contextId: req._id })}
+                                                        className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold text-sm"
+                                                    >
+                                                        <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
+                                                        Discuss
+                                                    </button>
                                                     <button
                                                         onClick={() => handleAction(req._id, 'approve')}
-                                                        disabled={actionLoading === req._id}
-                                                        className="inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold disabled:opacity-50"
+                                                        disabled={actionLoading === req._id || isViewOnly}
+                                                        className={`inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold text-sm ${(actionLoading === req._id || isViewOnly) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        title={isViewOnly ? "Approvals disabled during leave" : ""}
                                                     >
                                                         <CheckCircleIcon className="w-4 h-4 mr-1.5" />
                                                         Approve
                                                     </button>
                                                     <button
                                                         onClick={() => handleAction(req._id, 'reject')}
-                                                        disabled={actionLoading === req._id}
-                                                        className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60 rounded-xl transition-colors font-semibold disabled:opacity-50"
+                                                        disabled={actionLoading === req._id || isViewOnly}
+                                                        className={`inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60 rounded-xl transition-colors font-semibold text-sm ${(actionLoading === req._id || isViewOnly) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        title={isViewOnly ? "Rejections disabled during leave" : ""}
                                                     >
                                                         <XCircleIcon className="w-4 h-4 mr-1.5" />
                                                         Reject
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Processed</span>
+                                                <div className="space-x-2 flex justify-end items-center">
+                                                    {req.needsManagerReview ? (
+                                                        <button
+                                                            onClick={() => handleAcknowledge(req._id)}
+                                                            disabled={actionLoading === req._id}
+                                                            className="inline-flex items-center px-3 py-1.5 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/40 dark:text-orange-400 dark:hover:bg-orange-900/60 rounded-xl transition-colors font-semibold shadow-sm border border-orange-200 dark:border-orange-800/30 disabled:opacity-50 text-sm"
+                                                        >
+                                                            <CheckCircleIcon className="w-4 h-4 mr-1.5" />
+                                                            Acknowledge
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mr-2">Processed</span>
+                                                    )}
+                                                    <button
+                                                        onClick={() => setChatModal({ isOpen: true, contextId: req._id })}
+                                                        className="inline-flex items-center px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 rounded-xl transition-colors font-semibold text-xs"
+                                                    >
+                                                        <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
+                                                        View Chat
+                                                    </button>
+                                                </div>
                                             )}
                                         </td>
                                     </tr>
@@ -226,6 +285,14 @@ const ReimbursementRequests = () => {
                     </table>
                 </div>
             </div>
+
+            <ChatModal
+                isOpen={chatModal.isOpen}
+                onClose={() => setChatModal({ isOpen: false, contextId: null })}
+                contextType="reimbursement"
+                contextId={chatModal.contextId}
+                title="Expense Claim Discussion"
+            />
         </div>
     );
 };

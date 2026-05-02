@@ -1,6 +1,8 @@
 const ErrorResponse = require('../utils/errorResponse');
 const Leave = require('../models/Leave');
-const { sendLeaveAppliedEmail, sendLeaveStatusEmail } = require('../utils/emailService');
+const { sendLeaveAppliedEmail, sendLeaveStatusEmail, sendLeaveFYIEmail } = require('../utils/emailService');
+const auditLogger = require('../utils/auditLogger');
+const { getDepartmentResponders } = require('../utils/managerResolver');
 
 // @desc    Get all leaves (Admin/Manager see all, Employee sees own)
 // @route   GET /api/leaves
@@ -19,19 +21,57 @@ exports.getLeaves = async (req, res, next) => {
             if (filter.$or) {
                 filter.$and = [
                     { $or: filter.$or },
-                    { $or: [{ employee: req.user.id }, { backupEmployee: req.user.id }] }
+                    { $or: [{ employee: req.user.id }, { actingManager: req.user.id }] }
                 ];
                 delete filter.$or;
             } else {
-                filter.$or = [{ employee: req.user.id }, { backupEmployee: req.user.id }];
+                filter.$or = [{ employee: req.user.id }, { actingManager: req.user.id }];
+            }
+        } else if (req.user.role === 'Manager') {
+            // Managers see all leaves in their scoped departments, EXCEPT their own
+            const User = require('../models/User');
+            const now = new Date();
+            // Extremely robust 96-hour window (4 days) to handle any timezone shift
+            const startOfWindow = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+            const endOfWindow = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+            // Find any approved leaves where this user is the acting manager or backup
+            const actingRoles = await Leave.find({
+                $or: [{ actingManager: req.user.id }, { backupEmployee: req.user.id }],
+                status: 'Approved',
+                startDate: { $lte: endOfWindow },
+                endDate: { $gte: startOfWindow }
+            }).populate('employee', 'department');
+
+            const delegatedDepts = actingRoles.map(l => l.employee?.department).filter(Boolean);
+            const allAllowedDepts = [...new Set([req.user.department, ...delegatedDepts])];
+
+            console.log(`[DEEP FIX] User ${req.user.name} covering depts:`, allAllowedDepts);
+
+            const usersInDepts = await User.find({
+                department: { $in: allAllowedDepts },
+                _id: { $ne: req.user.id }
+            }).select('_id name department');
+            const userIds = usersInDepts.map(u => u._id);
+            
+            console.log(`[DEEP FIX] Found ${userIds.length} users in scoped depts.`);
+
+            if (filter.$or) {
+                filter.$and = [
+                    { $or: filter.$or },
+                    { $or: [{ employee: { $in: userIds } }, { actingManager: req.user.id }] }
+                ];
+                delete filter.$or;
+            } else {
+                filter.$or = [{ employee: { $in: userIds } }, { actingManager: req.user.id }];
             }
         }
 
-        query = Leave.find(filter).populate({
+        const query = Leave.find(filter).populate({
             path: 'employee',
             select: 'name email role department'
         }).populate({
-            path: 'backupEmployee',
+            path: 'actingManager',
             select: 'name email'
         });
 
@@ -56,7 +96,7 @@ exports.getLeave = async (req, res, next) => {
             path: 'employee',
             select: 'name email role'
         }).populate({
-            path: 'backupEmployee',
+            path: 'actingManager',
             select: 'name email'
         });
 
@@ -87,6 +127,35 @@ exports.applyLeave = async (req, res, next) => {
 
         // Add user to req.body
         req.body.employee = req.user.id;
+        
+        // Clean up delegation fields - ensure strings are trimmed or removed if empty
+        if (req.body.actingManager && String(req.body.actingManager).trim() !== '') {
+            req.body.actingManager = String(req.body.actingManager).trim();
+        } else {
+            delete req.body.actingManager;
+        }
+
+        if (req.body.actingAdminId && String(req.body.actingAdminId).trim() !== '') {
+            req.body.actingAdminId = String(req.body.actingAdminId).trim();
+        } else {
+            delete req.body.actingAdminId;
+        }
+
+        if (req.body.backupEmployee && String(req.body.backupEmployee).trim() !== '') {
+            req.body.backupEmployee = String(req.body.backupEmployee).trim();
+        } else {
+            delete req.body.backupEmployee;
+        }
+        
+        if (req.user.role === 'Admin') {
+            const AdminLeaveService = require('../services/adminLeaveService');
+            const io = req.app.get('io');
+            const leave = await AdminLeaveService.processAdminLeave(req.body, req.user, io);
+            return res.status(201).json({
+                success: true,
+                data: leave
+            });
+        }
 
         // Ensure dates are valid
         if (new Date(startDate) > new Date(endDate)) {
@@ -128,24 +197,50 @@ exports.applyLeave = async (req, res, next) => {
 
         const leave = await Leave.create(req.body);
 
-        // Notify managers in the same department, or fallback to Admins
-        const User = require('../models/User');
+        // Fetch full employee details for notifications
         const employee = await User.findById(req.user.id);
-        let notifyUsers = await User.find({ role: 'Manager', department: employee.department });
-
-        // Fallback: If no manager exists for this specific department, notify all Admins
-        if (notifyUsers.length === 0) {
-            notifyUsers = await User.find({ role: 'Admin' });
+        
+        // Notify responders (Primary vs FYI)
+        const { primary, fyi } = await getDepartmentResponders(employee.department);
+        
+        if (primary.length > 0) {
+            sendLeaveAppliedEmail(primary, employee.name, leave);
         }
-
-        if (notifyUsers.length > 0) {
-            sendLeaveAppliedEmail(notifyUsers, employee.name, leave);
+        if (fyi.length > 0) {
+            sendLeaveFYIEmail(fyi, employee.name, leave);
         }
 
         res.status(201).json({
             success: true,
             data: leave
         });
+
+        await auditLogger({
+            action: 'LEAVE_APPLIED',
+            performedBy: req.user.id,
+            role: req.user.role,
+            metadata: {
+                leaveId: leave._id,
+                type: leave.type,
+                startDate: leave.startDate,
+                endDate: leave.endDate,
+                isCritical: leave.isCriticalAtApplication,
+                actingManager: leave.actingManager
+            }
+        });
+
+        if (leave.actingManager) {
+            await auditLogger({
+                action: 'ACTING_MANAGER_ASSIGNED',
+                performedBy: req.user.id,
+                role: req.user.role,
+                targetUser: leave.actingManager,
+                metadata: {
+                    leaveId: leave._id,
+                    department: employee.department
+                }
+            });
+        }
     } catch (err) {
         console.error("Apply Leave Error:", err);
         if (err.name === 'ValidationError') {
@@ -175,9 +270,38 @@ exports.updateLeaveStatus = async (req, res, next) => {
 
         const { status, managerComment } = req.body;
 
-        // Make sure user is manager or admin
-        if (req.user.role !== 'Manager' && req.user.role !== 'Admin') {
+        let approverRole = req.user.role;
+        if (req.isActingAdmin) {
+            approverRole = 'ActingAdmin';
+        }
+
+        // Make sure user is manager, admin, or Acting Admin
+        if (req.user.role !== 'Manager' && req.user.role !== 'Admin' && !req.isActingAdmin) {
             return res.status(403).json({ success: false, error: 'Not authorized to update leave status' });
+        }
+
+        // [NEW] Block approvals if Manager is on leave (View-Only)
+        if (req.viewOnlyStatus && !req.isActingAdmin) {
+            return res.status(403).json({ 
+                success: false, 
+                error: 'Your account is in View-Only mode while you are on leave. Please contact your Acting Manager for approvals.' 
+            });
+        }
+
+        // Wait to fetch employee to see if Manager is acting for them
+        const User = require('../models/User');
+        const employeeUser = await User.findById(leave.employee);
+        const department = employeeUser ? employeeUser.department : 'General';
+        
+        let isApprovalByActingManager = false;
+        if (req.user.role === 'Manager' && !req.isActingAdmin) {
+            if (department !== req.user.department) {
+                if (req.isActingManager && req.actingManagerDepts && req.actingManagerDepts.includes(department)) {
+                    isApprovalByActingManager = true;
+                } else if (req.user.department !== 'HR') {
+                    return res.status(403).json({ success: false, error: 'Not authorized to approve this department\'s requests' });
+                }
+            }
         }
 
         // Processing Approval and Deducting Balance
@@ -189,10 +313,8 @@ exports.updateLeaveStatus = async (req, res, next) => {
                 return res.status(400).json({ success: false, error: 'Employee leave balance missing' });
             }
 
-            // SMART LEAVE CONFLICT DETECTION
-            const User = require('../models/User');
-            const employeeUser = await User.findById(leave.employee);
-            const department = employeeUser ? employeeUser.department : 'General';
+            // We already fetched employeeUser and department
+
 
             const overlappingLeaves = await Leave.find({
                 status: 'Approved',
@@ -249,10 +371,33 @@ exports.updateLeaveStatus = async (req, res, next) => {
 
         leave.status = status;
         if (managerComment) leave.managerComment = managerComment;
+
+        // Trace acting admin approvals
+        if (approverRole === 'ActingAdmin') {
+            leave.approvedByRole = 'ActingAdmin';
+            leave.approvedByActingAdmin = req.user.id;
+        } else if (isApprovalByActingManager) {
+            leave.approvedByRole = 'ActingManager';
+            leave.approvedByActingManager = req.user.id;
+            leave.needsManagerReview = true;
+            // Set who the acting manager is acting for
+            if (req.actingManagerDelegations && employeeRecord.department) {
+                leave.actingFor = req.actingManagerDelegations[employeeRecord.department];
+            }
+        } else if (approverRole === 'Manager' || approverRole === 'Admin') {
+            leave.approvedByRole = approverRole;
+        }
+
         await leave.save();
 
+        // Emit automated Chat System Message
+        const { addSystemMessage } = require('./chatController');
+        const io = req.app.get('io');
+        let messageText = `Leave request marked as **${status}** by ${req.user.name}.`;
+        if (managerComment) messageText += `\n*Reason: ${managerComment}*`;
+        await addSystemMessage('leave', leave._id, messageText, req.user.id, io);
+
         // Notify employee
-        const User = require('../models/User');
         const employeeRecord = await User.findById(leave.employee);
         const managerRecord = await User.findById(req.user.id);
         sendLeaveStatusEmail(employeeRecord, managerRecord.name, leave, status, managerComment);
@@ -260,6 +405,17 @@ exports.updateLeaveStatus = async (req, res, next) => {
         res.status(200).json({
             success: true,
             data: leave
+        });
+
+        await auditLogger({
+            action: status === 'Approved' ? 'LEAVE_APPROVED' : 'LEAVE_REJECTED',
+            performedBy: req.user.id,
+            role: approverRole,
+            targetUser: leave.employee,
+            metadata: {
+                leaveId: leave._id,
+                managerComment
+            }
         });
     } catch (err) {
         console.error("updateLeaveStatus Error:", err);
@@ -293,6 +449,42 @@ exports.deleteLeave = async (req, res, next) => {
         res.status(200).json({
             success: true,
             data: {}
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: 'Server Error' });
+    }
+};
+
+// @desc    Review acting manager approval
+// @route   POST /api/leaves/:id/review
+// @access  Private (Manager)
+exports.reviewActingManagerLeave = async (req, res, next) => {
+    try {
+        const leave = await Leave.findById(req.params.id).populate('employee');
+
+        if (!leave) {
+            return res.status(404).json({ success: false, error: 'Leave not found' });
+        }
+
+        if (req.user.role !== 'Manager' && req.user.role !== 'Admin') {
+            return res.status(403).json({ success: false, error: 'Not authorized to review this leave' });
+        }
+
+        if (req.user.role === 'Manager' && leave.employee.department !== req.user.department) {
+             return res.status(403).json({ success: false, error: 'Not authorized to review this department\'s requests' });
+        }
+
+        if (!leave.needsManagerReview) {
+             return res.status(400).json({ success: false, error: 'This leave does not require manager review' });
+        }
+
+        leave.needsManagerReview = false;
+        leave.managerReviewedAt = Date.now();
+        await leave.save();
+
+        res.status(200).json({
+            success: true,
+            data: leave
         });
     } catch (err) {
         res.status(500).json({ success: false, error: 'Server Error' });

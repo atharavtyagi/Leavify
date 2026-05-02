@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { UserCircleIcon, KeyIcon, BellIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, KeyIcon, BellIcon, ClockIcon, ComputerDesktopIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
+import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 
 const Settings = () => {
     const { user, setUser } = useAuth();
     const [activeTab, setActiveTab] = useState('profile');
+    const [loginHistory, setLoginHistory] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
 
     const [formData, setFormData] = useState({
         name: user?.name || '',
@@ -75,6 +78,24 @@ const Settings = () => {
             setFormData({ ...formData, currentPassword: '', newPassword: '', confirmNewPassword: '' });
         } catch (error) {
             toast.error(error.response?.data?.error || 'Failed to update password');
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'security') {
+            fetchLoginHistory();
+        }
+    }, [activeTab]);
+
+    const fetchLoginHistory = async () => {
+        setLoadingHistory(true);
+        try {
+            const res = await api.get('/audit/me/login-history');
+            setLoginHistory(res.data.data);
+        } catch (error) {
+            console.error('Failed to fetch login history', error);
+        } finally {
+            setLoadingHistory(false);
         }
     };
 
@@ -191,7 +212,7 @@ const Settings = () => {
                         {activeTab === 'security' && (
                             <div>
                                 <h2 className="text-xl font-extrabold text-slate-800 dark:text-zinc-100 mb-6 border-b border-white/40 dark:border-white/10 pb-3">Change Password</h2>
-                                <form onSubmit={handlePasswordSave} className="space-y-6 max-w-md">
+                                <form onSubmit={handlePasswordSave} className="space-y-6 max-w-md mb-12">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 dark:text-zinc-400 mb-2">Current Password</label>
                                         <input type="password" name="currentPassword" value={formData.currentPassword} onChange={handleChange} required placeholder="••••••••" className="input-field" />
@@ -208,6 +229,61 @@ const Settings = () => {
                                         <button type="submit" className="btn btn-primary px-6 py-2 shadow-primary-500/30">Update Password</button>
                                     </div>
                                 </form>
+
+                                <div className="mt-12">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h2 className="text-xl font-extrabold text-slate-800 dark:text-zinc-100 flex items-center">
+                                            <ClockIcon className="w-5 h-5 mr-2 text-primary-500" />
+                                            Recent Login Activity
+                                        </h2>
+                                        <button onClick={fetchLoginHistory} className="text-xs font-bold text-primary-600 hover:underline">Refresh</button>
+                                    </div>
+                                    
+                                    <div className="space-y-3">
+                                        {loadingHistory ? (
+                                            <div className="animate-pulse flex justify-center py-8">
+                                                <div className="h-4 bg-slate-200 dark:bg-white/10 rounded w-1/2"></div>
+                                            </div>
+                                        ) : loginHistory.length === 0 ? (
+                                            <div className="text-center py-8 bg-slate-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-slate-200 dark:border-white/10">
+                                                <p className="text-sm font-medium text-slate-500">No recent activity records found.</p>
+                                            </div>
+                                        ) : (
+                                            loginHistory.slice(0, 5).map((log) => (
+                                                <div key={log._id} className="flex items-center justify-between p-4 bg-white/40 dark:bg-[#0f0f11] rounded-2xl border border-white/60 dark:border-white/10 hover:shadow-sm transition-all group">
+                                                    <div className="flex items-center">
+                                                        <div className="p-2 bg-slate-100 dark:bg-zinc-800 rounded-xl mr-4 group-hover:bg-primary-50 dark:group-hover:bg-primary-900/20 transition-colors">
+                                                            <ComputerDesktopIcon className="w-5 h-5 text-slate-500 group-hover:text-primary-500" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 truncate max-w-[150px]" title={log.device}>{log.device}</p>
+                                                            <div className="flex items-center text-[11px] text-slate-500 font-bold font-mono">
+                                                                <GlobeAltIcon className="w-3.5 h-3.5 mr-1" />
+                                                                {log.ipAddress}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-bold text-slate-700 dark:text-zinc-300">
+                                                            {format(new Date(log.loginTime), 'MMM dd, HH:mm')}
+                                                        </p>
+                                                        {!log.logoutTime ? (
+                                                            <span className="inline-flex items-center text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
+                                                                Active Now
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[9px] font-bold text-slate-400">
+                                                                Logged out
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                    <p className="mt-4 text-xs text-slate-400 font-medium">Shows your 5 most recent sign-ins. If you don't recognize an activity, change your password immediately.</p>
+                                </div>
                             </div>
                         )}
 

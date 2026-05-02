@@ -52,6 +52,8 @@ const Dashboard = () => {
     const [backupRequests, setBackupRequests] = useState([]);
     const [acceptedBackupRequests, setAcceptedBackupRequests] = useState([]);
     const [backupModal, setBackupModal] = useState({ isOpen: false, reqId: null, action: '', comment: '' });
+    const [actingAdminStatus, setActingAdminStatus] = useState({ isActing: false, until: null });
+    const [pendingReviewsCount, setPendingReviewsCount] = useState(0);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -60,12 +62,12 @@ const Dashboard = () => {
                 const allLeaves = leavesRes.data.data;
 
                 let leaves = allLeaves;
-                if (user.role === 'Employee') {
+                if (user.role === 'Employee' || user.role === 'Manager') {
                     const currentUserId = user._id || user.id;
                     // Split actual requests from backup requests
                     leaves = allLeaves.filter(l => (l.employee?._id === currentUserId) || (l.employee === currentUserId));
-                    const reqs = allLeaves.filter(l => (l.backupEmployee?._id === currentUserId || l.backupEmployee === currentUserId) && !l.backupConfirmed);
-                    const acceptedReqs = allLeaves.filter(l => (l.backupEmployee?._id === currentUserId || l.backupEmployee === currentUserId) && l.backupConfirmed);
+                    const reqs = allLeaves.filter(l => (l.actingManager?._id === currentUserId || l.actingManager === currentUserId) && !l.backupConfirmed);
+                    const acceptedReqs = allLeaves.filter(l => (l.actingManager?._id === currentUserId || l.actingManager === currentUserId) && l.backupConfirmed);
                     setBackupRequests(reqs);
                     setAcceptedBackupRequests(acceptedReqs);
                 }
@@ -74,10 +76,20 @@ const Dashboard = () => {
                 if (user.role === 'Admin') {
                     const usersRes = await api.get('/users').catch(() => ({ data: { data: [] } }));
                     usersCount = usersRes.data.data.length;
-                } else if (user.role === 'Employee') {
+                }
+                if (user.role === 'Employee') {
                     const balanceRes = await api.get('/balances/me').catch(() => null);
                     if (balanceRes && balanceRes.data) {
                         setBalance(balanceRes.data.data);
+                    }
+                }
+
+                // Fetch Pending Reviews for Managers
+                if (user.role === 'Manager') {
+                    const reviewRes = await api.get('/reviews').catch(() => null);
+                    if (reviewRes && reviewRes.data) {
+                        const { leaves, reimbursements } = reviewRes.data.data;
+                        setPendingReviewsCount((leaves?.length || 0) + (reimbursements?.length || 0));
                     }
                 }
 
@@ -138,6 +150,14 @@ const Dashboard = () => {
                                 break;
                             }
                         }
+                    }
+
+                    const delegationRes = await api.get('/admin/delegation/status').catch(() => null);
+                    if (delegationRes && delegationRes.data && delegationRes.data.isActingAdmin) {
+                        setActingAdminStatus({
+                            isActing: true,
+                            until: new Date(delegationRes.data.endDate).toLocaleDateString()
+                        });
                     }
                 }
 
@@ -322,6 +342,48 @@ const Dashboard = () => {
                 <p className="text-slate-500 dark:text-zinc-400 mt-2 font-semibold text-lg">Overview of your {user.role === 'Admin' || user.role === 'Manager' ? 'organization\'s' : 'personal'} leave statistics.</p>
             </div>
 
+            {/* Post-Leave Review Alert */}
+            {user.role === 'Manager' && pendingReviewsCount > 0 && (
+                <div className="mb-8 p-6 glass-card border-l-8 border-amber-500 bg-amber-50/50 dark:bg-amber-900/10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl animate-pulse-subtle">
+                    <div className="flex items-center gap-5">
+                        <div className="w-14 h-14 rounded-2xl bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
+                            <ExclamationTriangleIcon className="w-8 h-8 text-white" />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800 dark:text-amber-100">Post-Leave Reviews Required</h3>
+                            <p className="text-slate-600 dark:text-amber-200/70 font-semibold">
+                                You have <span className="font-black text-amber-600 dark:text-amber-400">{pendingReviewsCount}</span> decisions taken by your acting manager that require your validation.
+                            </p>
+                        </div>
+                    </div>
+                    <Link 
+                        to="/manager/review-acting-decisions"
+                        className="w-full md:w-auto px-8 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 group"
+                    >
+                        Review Now
+                        <ArrowRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    </Link>
+                </div>
+            )}
+
+            {actingAdminStatus.isActing && (
+                <div className="mb-8 p-4 bg-indigo-50 dark:bg-indigo-900/20 border-l-4 border-indigo-500 rounded-r-md flex items-center justify-between shadow-sm">
+                    <div className="flex items-start">
+                        <div className="flex-shrink-0 mt-0.5">
+                            <svg className="h-6 w-6 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                        </div>
+                        <div className="ml-3">
+                            <h3 className="text-sm font-bold text-indigo-800 dark:text-indigo-300">Active Delegation: Acting Admin</h3>
+                            <div className="mt-1 text-sm text-indigo-700 dark:text-indigo-400">
+                                <p>You have been temporarily granted Admin privileges to manage company requests until {actingAdminStatus.until}.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {stats.hasConflictRisk && (
                 <div className="mb-8 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-r-md flex items-start shadow-sm">
                     <div className="flex-shrink-0">
@@ -413,7 +475,7 @@ const Dashboard = () => {
                 </div>
             )}
 
-            {user.role === 'Employee' && backupRequests.length > 0 && (
+            {(user.role === 'Employee' || user.role === 'Manager') && backupRequests.length > 0 && (
                 <div className="mb-10 glass-card overflow-hidden">
                     <div className="px-6 py-5 border-b border-white/20 dark:border-white/10 bg-gradient-to-r from-orange-500/10 dark:from-orange-500/20 to-transparent flex items-center">
                         <UsersIcon className="h-6 w-6 text-orange-500 dark:text-orange-400 mr-2" />
@@ -447,7 +509,7 @@ const Dashboard = () => {
                 </div>
             )}
 
-            {user.role === 'Employee' && acceptedBackupRequests.length > 0 && (
+            {(user.role === 'Employee' || user.role === 'Manager') && acceptedBackupRequests.length > 0 && (
                 <div className="mb-10 glass-card overflow-hidden">
                     <div className="px-6 py-5 border-b border-white/20 dark:border-white/10 bg-gradient-to-r from-emerald-500/10 dark:from-emerald-500/20 to-transparent flex items-center">
                         <CheckCircleIcon className="h-6 w-6 text-emerald-500 dark:text-emerald-400 mr-2" />

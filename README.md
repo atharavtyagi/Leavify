@@ -60,10 +60,6 @@ From the `backend` directory run:
 ```bash
 node seeder.js -i
 ```
-**Demo Accounts Created:**
-- **Admin**: `admin@leavify.com` / `password123`
-- **Manager**: `manager@leavify.com` / `password123`
-- **Employee**: `employee@leavify.com` / `password123`
 
 To destroy data:
 ```bash

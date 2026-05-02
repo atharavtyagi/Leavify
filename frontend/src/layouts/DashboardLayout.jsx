@@ -2,9 +2,13 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
+import AssistantWidget from '../components/AssistantWidget';
+import { useAuth } from '../context/AuthContext';
+import { EyeIcon } from '@heroicons/react/24/solid';
 
 const DashboardLayout = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const { user } = useAuth();
 
     return (
         <div className="flex h-screen font-sans overflow-hidden bg-transparent">
@@ -22,12 +26,23 @@ const DashboardLayout = () => {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 <Navbar onMenuClick={() => setSidebarOpen(true)} />
+                
+                {user?.isCurrentlyOnLeave && (
+                    <div className="bg-indigo-600 text-white px-4 py-2 flex items-center justify-center text-sm font-bold shadow-lg relative z-10 animate-in slide-in-from-top duration-500">
+                        <EyeIcon className="w-4 h-4 mr-2" />
+                        <span>VIEW-ONLY MODE: You are currently on leave. Approval rights are delegated to your Acting Manager.</span>
+                    </div>
+                )}
+                
                 <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
                     <Outlet />
                 </main>
             </div>
+
+            {/* Global AI Assistant */}
+            <AssistantWidget />
         </div>
     );
 };

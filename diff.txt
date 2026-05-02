@@ -1,0 +1,848 @@
+﻿diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index 9144ddc..00747f4 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -21,6 +21,9 @@ import MyReimbursements from './pages/MyReimbursements';
+ import ReimbursementRequests from './pages/ReimbursementRequests';
+ import AllReimbursements from './pages/AllReimbursements';
+ 
++// Enterprise Pages
++import AdminReview from './pages/AdminReview';
++
+ function App() {
+   return (
+     <BrowserRouter>
+@@ -53,6 +56,7 @@ function App() {
+               <Route path="/manage-balances" element={<ManageBalances />} />
+               <Route path="/all-leaves" element={<AllLeaves />} />
+               <Route path="/all-reimbursements" element={<AllReimbursements />} />
++              <Route path="/admin-review" element={<AdminReview />} />
+             </Route>
+           </Route>
+         </Route>
+diff --git a/frontend/src/components/Navbar.jsx b/frontend/src/components/Navbar.jsx
+index 6dbc696..5850a15 100644
+--- a/frontend/src/components/Navbar.jsx
++++ b/frontend/src/components/Navbar.jsx
+@@ -15,6 +15,14 @@ const Navbar = ({ onMenuClick }) => {
+     const notificationRef = useRef(null);
+     const [hasUnread, setHasUnread] = useState(false);
+ 
++    const markAsRead = async (notifId) => {
++        try {
++            await api.patch(`/notifications/${notifId}/read`);
++            setNotifications(prev => prev.filter(n => n.dbId !== notifId));
++            setHasUnread(notifications.some(n => n.isAlert && n.dbId !== notifId));
++        } catch (err) { }
++    };
++
+     // Fetch dynamic live notifications based on role
+     useEffect(() => {
+         const fetchNotifications = async () => {
+@@ -166,6 +174,26 @@ const Navbar = ({ onMenuClick }) => {
+                     }
+                 }
+ 
++                // Merge in real DB notifications for Managers (like Admin Leave updates)
++                try {
++                    const dbNotifsRes = await api.get('/notifications').catch(() => ({ data: { data: [] } }));
++                    const dbNotifs = dbNotifsRes.data.data || [];
++                    dbNotifs.forEach(n => {
++                        if (!n.read) {
++                            newNotifs.push({
++                                id: `db_${n._id}`,
++                                dbId: n._id,
++                                title: n.type === 'admin_leave' ? 'Admin Leave Update' : 'New Alert',
++                                message: n.message,
++                                time: new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
++                                isAlert: true,
++                                link: null,
++                                read: n.read
++                            });
++                        }
++                    });
++                } catch (err) { }
++
+                 // Default empty state handling
+                 if (newNotifs.length === 0) {
+                     newNotifs.push({
+@@ -259,12 +287,27 @@ const Navbar = ({ onMenuClick }) => {
+                                                 </p>
+                                                 <p className={`text-xs mt-1 ${notif.isAlert ? 'text-red-600 dark:text-red-300' : 'text-slate-500 dark:text-zinc-400'}`}>{notif.message}</p>
+                                                 <p className={`text-xs mt-2 ${notif.isAlert ? 'text-red-500 dark:text-red-400 font-bold' : 'text-slate-400 dark:text-zinc-500'}`}>{notif.time}</p>
++                                                <p className="text-xs mt-2 text-slate-400 dark:text-zinc-500">{notif.time}</p>
+                                             </Link>
+                                         ) : (
+-                                            <div key={notif.id} className="p-4 border-b border-white/40 dark:border-white/10 hover:bg-white/50 dark:hover:bg-white/5 transition-colors cursor-pointer">
+-                                                <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{notif.title}</p>
+-                                                <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{notif.message}</p>
+-                                                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-2">{notif.time}</p>
++                                            <div key={notif.id} className={`p-4 border-b border-white/40 dark:border-white/10 hover:bg-white/50 dark:hover:bg-white/5 transition-colors cursor-pointer ${notif.isAlert ? 'bg-indigo-50/50 dark:bg-indigo-900/20' : ''}`} onClick={() => notif.dbId && markAsRead(notif.dbId)}>
++                                                <div className="flex justify-between items-start">
++                                                    <div>
++                                                        <p className={`text-sm font-semibold ${notif.isAlert ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-800 dark:text-zinc-100'}`}>
++                                                            {notif.isAlert && '≡ƒöö '}{notif.title}
++                                                        </p>
++                                                        <p className={`text-xs mt-1 ${notif.isAlert ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-zinc-400'}`}>{notif.message}</p>
++                                                        <p className="text-xs mt-2 text-slate-400 dark:text-zinc-500 font-medium">{notif.time}</p>
++                                                    </div>
++                                                    {notif.dbId && (
++                                                        <button 
++                                                            className="text-xs bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300 px-2 py-1 rounded hover:bg-indigo-200"
++                                                            onClick={(e) => { e.stopPropagation(); markAsRead(notif.dbId); }}
++                                                        >
++                                                            Dismiss
++                                                        </button>
++                                                    )}
++                                                </div>
+                                             </div>
+                                         )
+                                     ))}
+diff --git a/frontend/src/components/Sidebar.jsx b/frontend/src/components/Sidebar.jsx
+index 873c1b5..e32082d 100644
+--- a/frontend/src/components/Sidebar.jsx
++++ b/frontend/src/components/Sidebar.jsx
+@@ -27,8 +27,10 @@ const Sidebar = () => {
+ 
+     const managerLinks = [
+         { name: 'Dashboard', path: '/dashboard', icon: HomeIcon },
++        { name: 'My Leaves', path: '/my-leaves', icon: DocumentTextIcon },
++        { name: 'My Expenses', path: '/my-reimbursements', icon: CurrencyDollarIcon },
+         { name: 'Leave Requests', path: '/leave-requests', icon: ClipboardDocumentCheckIcon },
+-        { name: 'Reimbursement Claims', path: '/reimbursement-requests', icon: CurrencyDollarIcon },
++        { name: 'Team Expenses', path: '/reimbursement-requests', icon: CurrencyDollarIcon },
+         { name: 'Calendar', path: '/calendar', icon: CalendarIcon },
+         { name: 'Settings', path: '/settings', icon: Cog8ToothIcon },
+     ];
+@@ -37,14 +39,25 @@ const Sidebar = () => {
+         { name: 'Dashboard', path: '/dashboard', icon: HomeIcon },
+         { name: 'Manage Users', path: '/manage-users', icon: UsersIcon },
+         { name: 'Manage Balances', path: '/manage-balances', icon: ScaleIcon },
++        { name: 'My Leaves', path: '/my-leaves', icon: DocumentTextIcon },
++        { name: 'My Expenses', path: '/my-reimbursements', icon: CurrencyDollarIcon },
+         { name: 'All Leaves', path: '/all-leaves', icon: ClipboardDocumentCheckIcon },
+-        { name: 'All Reimbursements', path: '/all-reimbursements', icon: BanknotesIcon },
++        { name: 'All Expenses', path: '/all-reimbursements', icon: BanknotesIcon },
++        { name: 'Delegation Review', path: '/admin-review', icon: ClipboardDocumentCheckIcon },
+         { name: 'Calendar', path: '/calendar', icon: CalendarIcon },
+         { name: 'Settings', path: '/settings', icon: Cog8ToothIcon },
+     ];
+ 
+     let links = employeeLinks;
+-    if (user?.role === 'Manager') links = managerLinks;
++    if (user?.role === 'Manager') {
++        links = [...managerLinks];
++        if (user.isActingAdmin) {
++            links.splice(4, 0, 
++                { name: 'Proxy Leaves', path: '/all-leaves', icon: ClipboardDocumentCheckIcon },
++                { name: 'Proxy Expenses', path: '/all-reimbursements', icon: BanknotesIcon }
++            );
++        }
++    }
+     if (user?.role === 'Admin') links = adminLinks;
+ 
+     return (
+diff --git a/frontend/src/context/AuthContext.jsx b/frontend/src/context/AuthContext.jsx
+index 2e2e15a..e8fc430 100644
+--- a/frontend/src/context/AuthContext.jsx
++++ b/frontend/src/context/AuthContext.jsx
+@@ -22,7 +22,19 @@ export const AuthProvider = ({ children }) => {
+                     } else {
+                         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                         const res = await api.get('/auth/me');
+-                        setUser(res.data.data);
++                        const userData = res.data.data;
++                        
++                        if (userData.role === 'Manager') {
++                            try {
++                                const delegationRes = await api.get('/admin/delegation/status');
++                                if (delegationRes.data.success && delegationRes.data.isActingAdmin) {
++                                    userData.isActingAdmin = true;
++                                    userData.actingAdminUntil = delegationRes.data.endDate;
++                                }
++                            } catch (err) { }
++                        }
++                        
++                        setUser(userData);
+                     }
+                 } catch (error) {
+                     console.error("Auth init error:", error);
+@@ -39,10 +51,21 @@ export const AuthProvider = ({ children }) => {
+         try {
+             const res = await api.post('/auth/login', { email, password });
+ 
+-            const { token, user } = res.data;
++            const { token, user: loginUser } = res.data;
+             localStorage.setItem('token', token);
+             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+-            setUser(user);
++            
++            if (loginUser.role === 'Manager') {
++                try {
++                    const delegationRes = await api.get('/admin/delegation/status');
++                    if (delegationRes.data.success && delegationRes.data.isActingAdmin) {
++                        loginUser.isActingAdmin = true;
++                        loginUser.actingAdminUntil = delegationRes.data.endDate;
++                    }
++                } catch (err) { }
++            }
++
++            setUser(loginUser);
+             toast.success('Login successful');
+             return true;
+         } catch (error) {
+@@ -71,6 +94,7 @@ export const AuthProvider = ({ children }) => {
+         localStorage.removeItem('token');
+         delete api.defaults.headers.common['Authorization'];
+         setUser(null);
++        sessionStorage.clear(); // Ensure all chat histories are completely obliterated on logout
+         toast.success('Logged out successfully');
+     };
+ 
+diff --git a/frontend/src/layouts/DashboardLayout.jsx b/frontend/src/layouts/DashboardLayout.jsx
+index 466b19e..00dc18f 100644
+--- a/frontend/src/layouts/DashboardLayout.jsx
++++ b/frontend/src/layouts/DashboardLayout.jsx
+@@ -2,6 +2,7 @@ import React, { useState } from 'react';
+ import { Outlet } from 'react-router-dom';
+ import Sidebar from '../components/Sidebar';
+ import Navbar from '../components/Navbar';
++import AssistantWidget from '../components/AssistantWidget';
+ 
+ const DashboardLayout = () => {
+     const [sidebarOpen, setSidebarOpen] = useState(false);
+@@ -28,6 +29,9 @@ const DashboardLayout = () => {
+                     <Outlet />
+                 </main>
+             </div>
++
++            {/* Global AI Assistant */}
++            <AssistantWidget />
+         </div>
+     );
+ };
+diff --git a/frontend/src/pages/AllLeaves.jsx b/frontend/src/pages/AllLeaves.jsx
+index cd473cf..a096027 100644
+--- a/frontend/src/pages/AllLeaves.jsx
++++ b/frontend/src/pages/AllLeaves.jsx
+@@ -1,10 +1,13 @@
+ import React, { useState, useEffect } from 'react';
+ import api from '../services/api';
+ import toast from 'react-hot-toast';
++import { ChatBubbleLeftEllipsisIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
++import ChatModal from '../components/ChatModal';
+ 
+ const AllLeaves = () => {
+     const [leaves, setLeaves] = useState([]);
+     const [loading, setLoading] = useState(true);
++    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
+ 
+     useEffect(() => {
+         fetchLeaves();
+@@ -21,6 +24,16 @@ const AllLeaves = () => {
+         }
+     };
+ 
++    const handleAction = async (id, status) => {
++        try {
++            await api.put(`/leaves/${id}`, { status });
++            toast.success(`Leave ${status.toLowerCase()} successfully`);
++            fetchLeaves();
++        } catch (error) {
++            toast.error(error.response?.data?.error || `Failed to ${status.toLowerCase()} leave`);
++        }
++    };
++
+     const getStatusBadge = (status) => {
+         const classes = {
+             Pending: 'bg-yellow-100 text-yellow-800',
+@@ -50,6 +63,7 @@ const AllLeaves = () => {
+                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Leave Type</th>
+                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Dates</th>
+                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
++                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Discussion</th>
+                         </tr>
+                     </thead>
+                     <tbody className="bg-transparent divide-y divide-white/20 dark:divide-white/10">
+@@ -83,12 +97,52 @@ const AllLeaves = () => {
+                                     <td className="px-6 py-4 whitespace-nowrap">
+                                         {getStatusBadge(leave.status)}
+                                     </td>
++                                    <td className="px-6 py-4 text-right whitespace-nowrap text-sm font-medium">
++                                        <div className="flex justify-end space-x-2">
++                                            {leave.status === 'Pending' && leave.employee?.role === 'Manager' && (
++                                                <>
++                                                    <button
++                                                        onClick={() => handleAction(leave._id, 'Approved')}
++                                                        className="inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold"
++                                                        title="Approve Leave"
++                                                    >
++                                                        <CheckCircleIcon className="w-4 h-4 mr-1.5" />
++                                                        Approve
++                                                    </button>
++                                                    <button
++                                                        onClick={() => handleAction(leave._id, 'Rejected')}
++                                                        className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60 rounded-xl transition-colors font-semibold"
++                                                        title="Reject Leave"
++                                                    >
++                                                        <XCircleIcon className="w-4 h-4 mr-1.5" />
++                                                        Reject
++                                                    </button>
++                                                </>
++                                            )}
++                                            <button
++                                                type="button"
++                                                onClick={() => setChatModal({ isOpen: true, contextId: leave._id })}
++                                                className="inline-flex items-center px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 rounded-xl transition-colors font-semibold text-xs border border-slate-200 dark:border-white/10"
++                                            >
++                                                <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
++                                                View Chat
++                                            </button>
++                                        </div>
++                                    </td>
+                                 </tr>
+                             ))
+                         )}
+                     </tbody>
+                 </table>
+             </div>
++
++            <ChatModal
++                isOpen={chatModal.isOpen}
++                onClose={() => setChatModal({ isOpen: false, contextId: null })}
++                contextType="leave"
++                contextId={chatModal.contextId}
++                title="Leave Application Discussion (Read-Only)"
++            />
+         </div>
+     );
+ };
+diff --git a/frontend/src/pages/AllReimbursements.jsx b/frontend/src/pages/AllReimbursements.jsx
+index daa7cd6..f729931 100644
+--- a/frontend/src/pages/AllReimbursements.jsx
++++ b/frontend/src/pages/AllReimbursements.jsx
+@@ -1,6 +1,7 @@
+ import React, { useState, useEffect } from 'react';
+-import { CurrencyDollarIcon, BanknotesIcon, TrashIcon, CheckCircleIcon, ClockIcon, XCircleIcon } from '@heroicons/react/24/outline';
++import { CurrencyDollarIcon, BanknotesIcon, TrashIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
+ import EmptyState from '../components/EmptyState';
++import ChatModal from '../components/ChatModal';
+ import toast from 'react-hot-toast';
+ import { reimbursementService } from '../services/reimbursementService';
+ import { STATIC_BASE_URL } from '../services/api';
+@@ -9,6 +10,7 @@ const AllReimbursements = () => {
+     const [reimbursements, setReimbursements] = useState([]);
+     const [loading, setLoading] = useState(true);
+     const [actionLoading, setActionLoading] = useState(null);
++    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
+     const [stats, setStats] = useState({ total: 0, approvedAmount: 0, pendingAmount: 0 });
+ 
+     useEffect(() => {
+@@ -180,8 +182,16 @@ const AllReimbursements = () => {
+                                             ${req.amount.toFixed(2)}
+                                         </td>
+                                         <td className="p-4 text-right">
+-                                            <div className="space-x-2 flex justify-end">
+-                                                {(req.status === 'Pending' || req.status === 'Manager Approved') && (
++                                            <div className="space-x-2 flex justify-end items-center">
++                                                <button
++                                                    onClick={() => setChatModal({ isOpen: true, contextId: req._id })}
++                                                    className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold disabled:opacity-50 text-sm"
++                                                    title="View Discussion"
++                                                >
++                                                    <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
++                                                    Chat
++                                                </button>
++                                                {(req.status === 'Manager Approved' || (req.status === 'Pending' && req.employee?.role === 'Manager')) && (
+                                                     <>
+                                                         <button
+                                                             onClick={() => handleAction(req._id, 'approve')}
+@@ -219,6 +229,14 @@ const AllReimbursements = () => {
+                     </table>
+                 </div>
+             </div>
++
++            <ChatModal
++                isOpen={chatModal.isOpen}
++                onClose={() => setChatModal({ isOpen: false, contextId: null })}
++                contextType="reimbursement"
++                contextId={chatModal.contextId}
++                title="Expense Claim Discussion (Read-Only)"
++            />
+         </div>
+     );
+ };
+diff --git a/frontend/src/pages/Dashboard.jsx b/frontend/src/pages/Dashboard.jsx
+index c1719c4..400da4e 100644
+--- a/frontend/src/pages/Dashboard.jsx
++++ b/frontend/src/pages/Dashboard.jsx
+@@ -52,6 +52,7 @@ const Dashboard = () => {
+     const [backupRequests, setBackupRequests] = useState([]);
+     const [acceptedBackupRequests, setAcceptedBackupRequests] = useState([]);
+     const [backupModal, setBackupModal] = useState({ isOpen: false, reqId: null, action: '', comment: '' });
++    const [actingAdminStatus, setActingAdminStatus] = useState({ isActing: false, until: null });
+ 
+     useEffect(() => {
+         const fetchDashboardData = async () => {
+@@ -139,6 +140,14 @@ const Dashboard = () => {
+                             }
+                         }
+                     }
++
++                    const delegationRes = await api.get('/admin/delegation/status').catch(() => null);
++                    if (delegationRes && delegationRes.data && delegationRes.data.isActingAdmin) {
++                        setActingAdminStatus({
++                            isActing: true,
++                            until: new Date(delegationRes.data.endDate).toLocaleDateString()
++                        });
++                    }
+                 }
+ 
+                 let adminReimbursements = [];
+@@ -322,6 +331,24 @@ const Dashboard = () => {
+                 <p className="text-slate-500 dark:text-zinc-400 mt-2 font-semibold text-lg">Overview of your {user.role === 'Admin' || user.role === 'Manager' ? 'organization\'s' : 'personal'} leave statistics.</p>
+             </div>
+ 
++            {actingAdminStatus.isActing && (
++                <div className="mb-8 p-4 bg-indigo-50 dark:bg-indigo-900/20 border-l-4 border-indigo-500 rounded-r-md flex items-center justify-between shadow-sm">
++                    <div className="flex items-start">
++                        <div className="flex-shrink-0 mt-0.5">
++                            <svg className="h-6 w-6 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
++                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
++                            </svg>
++                        </div>
++                        <div className="ml-3">
++                            <h3 className="text-sm font-bold text-indigo-800 dark:text-indigo-300">Active Delegation: Acting Admin</h3>
++                            <div className="mt-1 text-sm text-indigo-700 dark:text-indigo-400">
++                                <p>You have been temporarily granted Admin privileges to manage company requests until {actingAdminStatus.until}.</p>
++                            </div>
++                        </div>
++                    </div>
++                </div>
++            )}
++
+             {stats.hasConflictRisk && (
+                 <div className="mb-8 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-r-md flex items-start shadow-sm">
+                     <div className="flex-shrink-0">
+diff --git a/frontend/src/pages/LeaveRequests.jsx b/frontend/src/pages/LeaveRequests.jsx
+index f975e0e..e1c81db 100644
+--- a/frontend/src/pages/LeaveRequests.jsx
++++ b/frontend/src/pages/LeaveRequests.jsx
+@@ -1,8 +1,9 @@
+ import React, { useState, useEffect } from 'react';
+ import api from '../services/api';
+ import toast from 'react-hot-toast';
+-import { DocumentTextIcon, CheckCircleIcon, ClockIcon, XCircleIcon } from '@heroicons/react/24/outline';
++import { DocumentTextIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
+ import EmptyState from '../components/EmptyState';
++import ChatModal from '../components/ChatModal';
+ 
+ const LeaveRequests = () => {
+     const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0 });
+@@ -10,6 +11,7 @@ const LeaveRequests = () => {
+     const [loading, setLoading] = useState(true);
+     const [filter, setFilter] = useState('Pending');
+     const [actionModal, setActionModal] = useState({ show: false, leaveId: null, action: '' });
++    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
+     const [managerComment, setManagerComment] = useState('');
+     const [conflict, setConflict] = useState({ isConflict: false, reason: '' });
+ 
+@@ -252,7 +254,14 @@ const LeaveRequests = () => {
+                                     </td>
+                                     <td className="px-6 py-4 text-right whitespace-nowrap text-sm font-medium">
+                                         {leave.status === 'Pending' ? (
+-                                            <div className="space-x-2 flex justify-end">
++                                            <div className="space-x-2 flex justify-end items-center">
++                                                <button
++                                                    onClick={() => setChatModal({ isOpen: true, contextId: leave._id })}
++                                                    className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold"
++                                                >
++                                                    <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
++                                                    Discuss
++                                                </button>
+                                                 <button
+                                                     onClick={() => handleActionClick(leave._id, 'Approved')}
+                                                     className="inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold"
+@@ -269,7 +278,16 @@ const LeaveRequests = () => {
+                                                 </button>
+                                             </div>
+                                         ) : (
+-                                            <span className="text-gray-400">Processed</span>
++                                            <div className="space-x-2 flex justify-end items-center">
++                                                <span className="text-gray-400 font-semibold mr-2 px-3 py-1.5 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 text-xs">Processed</span>
++                                                <button
++                                                    onClick={() => setChatModal({ isOpen: true, contextId: leave._id })}
++                                                    className="inline-flex items-center px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 rounded-xl transition-colors font-semibold text-xs"
++                                                >
++                                                    <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
++                                                    View Chat
++                                                </button>
++                                            </div>
+                                         )}
+                                     </td>
+                                 </tr>
+@@ -338,6 +356,14 @@ const LeaveRequests = () => {
+                     </div>
+                 </div>
+             )}
++
++            <ChatModal
++                isOpen={chatModal.isOpen}
++                onClose={() => setChatModal({ isOpen: false, contextId: null })}
++                contextType="leave"
++                contextId={chatModal.contextId}
++                title="Leave Application Discussion"
++            />
+         </div>
+     );
+ };
+diff --git a/frontend/src/pages/MyLeaves.jsx b/frontend/src/pages/MyLeaves.jsx
+index 592af78..b9df266 100644
+--- a/frontend/src/pages/MyLeaves.jsx
++++ b/frontend/src/pages/MyLeaves.jsx
+@@ -1,9 +1,10 @@
+ import React, { useState, useEffect } from 'react';
+ import api from '../services/api';
+ import toast from 'react-hot-toast';
+-import { PlusIcon, DocumentCheckIcon, CalendarIcon, DocumentTextIcon, UsersIcon } from '@heroicons/react/24/outline';
++import { PlusIcon, DocumentCheckIcon, CalendarIcon, DocumentTextIcon, UsersIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
+ import { useAuth } from '../context/AuthContext';
+ import EmptyState from '../components/EmptyState';
++import ChatModal from '../components/ChatModal';
+ 
+ const MyLeaves = () => {
+     const { user } = useAuth();
+@@ -12,13 +13,15 @@ const MyLeaves = () => {
+     const [users, setUsers] = useState([]);
+     const [loading, setLoading] = useState(true);
+     const [showApplyModal, setShowApplyModal] = useState(false);
++    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
+ 
+     const [formData, setFormData] = useState({
+         type: 'Sick',
+         startDate: '',
+         endDate: '',
+         reason: '',
+-        backupEmployee: ''
++        backupEmployee: '',
++        actingAdminId: ''
+     });
+     const [isSubmitting, setIsSubmitting] = useState(false);
+ 
+@@ -59,7 +62,7 @@ const MyLeaves = () => {
+             await api.post('/leaves', formData);
+             toast.success('Leave applied successfully');
+             setShowApplyModal(false);
+-            setFormData({ type: 'Sick', startDate: '', endDate: '', reason: '', backupEmployee: '' });
++            setFormData({ type: 'Sick', startDate: '', endDate: '', reason: '', backupEmployee: '', actingAdminId: '' });
+             fetchData();
+         } catch (error) {
+             const msg = error.response?.data?.error;
+@@ -142,6 +145,7 @@ const MyLeaves = () => {
+                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Applied On</th>
+                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Manager Comment</th>
++                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Discussion</th>
+                         </tr>
+                     </thead>
+                     <tbody className="bg-transparent divide-y divide-white/20 dark:divide-white/10">
+@@ -196,6 +200,16 @@ const MyLeaves = () => {
+                                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
+                                         {leave.managerComment || '-'}
+                                     </td>
++                                    <td className="px-6 py-4 text-right whitespace-nowrap text-sm font-medium">
++                                        <button
++                                            type="button"
++                                            onClick={() => setChatModal({ isOpen: true, contextId: leave._id })}
++                                            className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold shadow-sm border border-indigo-100 dark:border-indigo-800/30"
++                                        >
++                                            <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
++                                            {leave.status === 'Pending' ? 'Discuss' : 'View Chat'}
++                                        </button>
++                                    </td>
+                                 </tr>
+                             ))
+                         )}
+@@ -296,38 +310,65 @@ const MyLeaves = () => {
+                                     </div>
+                                 </div>
+ 
+-                                <div>
+-                                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-400 mb-2">Backup Employee (Optional)</label>
+-                                    <div className="relative">
+-                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+-                                            <UsersIcon className="h-5 w-5 text-gray-400 dark:text-zinc-500" />
++                                {user?.role === 'Employee' && (
++                                    <div>
++                                        <label className="block text-sm font-medium text-slate-700 dark:text-zinc-400 mb-2">Backup Employee (Optional)</label>
++                                        <div className="relative">
++                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
++                                                <UsersIcon className="h-5 w-5 text-gray-400 dark:text-zinc-500" />
++                                            </div>
++                                            <select
++                                                name="backupEmployee"
++                                                value={formData.backupEmployee}
++                                                onChange={handleChange}
++                                                className="w-full bg-white dark:bg-[#0f0f11] border-none rounded-2xl py-3.5 pl-11 pr-4 shadow-sm focus:ring-2 focus:ring-primary-500 dark:text-zinc-100 outline-none transition-shadow"
++                                            >
++                                                <option value="">-- No Backup Assigned --</option>
++                                                {users
++                                                    .filter(u =>
++                                                        u.role !== 'Admin' &&
++                                                        u._id !== (user?._id || user?.id) &&
++                                                        u.department === user?.department &&
++                                                        (user?.skills || []).some(s => (u.skills || []).includes(s))
++                                                    )
++                                                    .map(u => {
++                                                        const sharedSkills = (user?.skills || []).filter(s => (u.skills || []).includes(s));
++                                                        return (
++                                                            <option key={u._id} value={u._id}>
++                                                                {u.name} {sharedSkills.length > 0 ? `(${sharedSkills.length} Shared Skills)` : ''}
++                                                            </option>
++                                                        );
++                                                    })}
++                                            </select>
+                                         </div>
+-                                        <select
+-                                            name="backupEmployee"
+-                                            value={formData.backupEmployee}
+-                                            onChange={handleChange}
+-                                            className="w-full bg-white dark:bg-[#0f0f11] border-none rounded-2xl py-3.5 pl-11 pr-4 shadow-sm focus:ring-2 focus:ring-primary-500 dark:text-zinc-100 outline-none transition-shadow"
+-                                        >
+-                                            <option value="">-- No Backup Assigned --</option>
+-                                            {users
+-                                                .filter(u =>
+-                                                    u.role !== 'Admin' &&
+-                                                    u._id !== (user?._id || user?.id) &&
+-                                                    u.department === user?.department &&
+-                                                    (user?.skills || []).some(s => (u.skills || []).includes(s))
+-                                                )
+-                                                .map(u => {
+-                                                    const sharedSkills = (user?.skills || []).filter(s => (u.skills || []).includes(s));
+-                                                    return (
+-                                                        <option key={u._id} value={u._id}>
+-                                                            {u.name} {sharedSkills.length > 0 ? `(${sharedSkills.length} Shared Skills)` : ''}
+-                                                        </option>
+-                                                    );
+-                                                })}
+-                                        </select>
++                                        <p className="text-xs text-slate-500 dark:text-zinc-500 mt-2">Select a colleague to cover for you. They must confirm this request.</p>
+                                     </div>
+-                                    <p className="text-xs text-slate-500 dark:text-zinc-500 mt-2">Select a colleague to cover for you. They must confirm this request.</p>
+-                                </div>
++                                )}
++
++                                {user?.role === 'Admin' && (
++                                    <div>
++                                        <label className="block text-sm font-medium text-slate-700 dark:text-zinc-400 mb-2">Acting Admin (Optional)</label>
++                                        <div className="relative">
++                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
++                                                <UsersIcon className="h-5 w-5 text-gray-400 dark:text-zinc-500" />
++                                            </div>
++                                            <select
++                                                name="actingAdminId"
++                                                value={formData.actingAdminId}
++                                                onChange={handleChange}
++                                                className="w-full bg-white dark:bg-[#0f0f11] border-none rounded-2xl py-3.5 pl-11 pr-4 shadow-sm focus:ring-2 focus:ring-primary-500 dark:text-zinc-100 outline-none transition-shadow"
++                                            >
++                                                <option value="">-- Select Manager to Cover --</option>
++                                                {users
++                                                    .filter(u => u.role === 'Manager')
++                                                    .map(u => (
++                                                        <option key={u._id} value={u._id}>{u.name} ({u.department})</option>
++                                                    ))}
++                                            </select>
++                                        </div>
++                                        <p className="text-xs text-slate-500 dark:text-zinc-500 mt-2">During your leave, they will temporarily get Admin approval privileges.</p>
++                                    </div>
++                                )}
+ 
+                                 {balance && (formData.type === 'Annual' || formData.type === 'Sick' || formData.type === 'Casual') && (
+                                     <div className="bg-[#eef2ff] dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-200 p-4 rounded-2xl text-sm border border-indigo-100 dark:border-indigo-800/50 mt-4 leading-relaxed">
+@@ -360,6 +401,14 @@ const MyLeaves = () => {
+                     </div>
+                 </div>
+             )}
++
++            <ChatModal
++                isOpen={chatModal.isOpen}
++                onClose={() => setChatModal({ isOpen: false, contextId: null })}
++                contextType="leave"
++                contextId={chatModal.contextId}
++                title="Leave Application Discussion"
++            />
+         </div>
+     );
+ };
+diff --git a/frontend/src/pages/MyReimbursements.jsx b/frontend/src/pages/MyReimbursements.jsx
+index 4ba5a1f..d52b6c5 100644
+--- a/frontend/src/pages/MyReimbursements.jsx
++++ b/frontend/src/pages/MyReimbursements.jsx
+@@ -1,6 +1,7 @@
+ import React, { useState, useEffect } from 'react';
+-import { PlusIcon, BanknotesIcon, CurrencyDollarIcon, DocumentIcon, DocumentCheckIcon, CalendarIcon, DocumentTextIcon, LinkIcon } from '@heroicons/react/24/outline';
++import { PlusIcon, BanknotesIcon, CurrencyDollarIcon, DocumentIcon, DocumentCheckIcon, CalendarIcon, DocumentTextIcon, LinkIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
+ import EmptyState from '../components/EmptyState';
++import ChatModal from '../components/ChatModal';
+ import toast from 'react-hot-toast';
+ import { reimbursementService } from '../services/reimbursementService';
+ 
+@@ -9,6 +10,7 @@ const MyReimbursements = () => {
+     const [loading, setLoading] = useState(true);
+     const [filterStatus, setFilterStatus] = useState('All');
+     const [showApplyModal, setShowApplyModal] = useState(false);
++    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
+     const [isSubmitting, setIsSubmitting] = useState(false);
+     const [formData, setFormData] = useState({
+         expenseType: 'Travel',
+@@ -175,6 +177,7 @@ const MyReimbursements = () => {
+                                 <th className="p-4 text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Description</th>
+                                 <th className="p-4 text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Status</th>
+                                 <th className="p-4 text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Reviewed</th>
++                                <th className="p-4 text-right text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Discussion</th>
+                             </tr>
+                         </thead>
+                         <tbody className="divide-y divide-white/40 dark:divide-white/10">
+@@ -208,6 +211,16 @@ const MyReimbursements = () => {
+                                         <td className="p-4 text-xs font-semibold text-slate-500 dark:text-zinc-400 whitespace-nowrap">
+                                             {req.reviewedAt ? new Date(req.reviewedAt).toLocaleDateString() : '-'}
+                                         </td>
++                                        <td className="p-4 text-right whitespace-nowrap">
++                                            <button
++                                                type="button"
++                                                onClick={() => setChatModal({ isOpen: true, contextId: req._id })}
++                                                className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold shadow-sm border border-indigo-100 dark:border-indigo-800/30 text-sm"
++                                            >
++                                                <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
++                                                {req.status === 'Pending' || req.status === 'Manager Approved' ? 'Discuss' : 'View Chat'}
++                                            </button>
++                                        </td>
+                                     </tr>
+                                 ))
+                             )}
+@@ -315,6 +328,14 @@ const MyReimbursements = () => {
+                     </div>
+                 </div>
+             )}
++
++            <ChatModal
++                isOpen={chatModal.isOpen}
++                onClose={() => setChatModal({ isOpen: false, contextId: null })}
++                contextType="reimbursement"
++                contextId={chatModal.contextId}
++                title="Expense Claim Discussion"
++            />
+         </div>
+     );
+ };
+diff --git a/frontend/src/pages/ReimbursementRequests.jsx b/frontend/src/pages/ReimbursementRequests.jsx
+index c21aea9..012b03c 100644
+--- a/frontend/src/pages/ReimbursementRequests.jsx
++++ b/frontend/src/pages/ReimbursementRequests.jsx
+@@ -1,6 +1,7 @@
+ import React, { useState, useEffect } from 'react';
+-import { CheckCircleIcon, XCircleIcon, BanknotesIcon, CurrencyDollarIcon, ClockIcon } from '@heroicons/react/24/outline';
++import { CheckCircleIcon, XCircleIcon, BanknotesIcon, CurrencyDollarIcon, ClockIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
+ import EmptyState from '../components/EmptyState';
++import ChatModal from '../components/ChatModal';
+ import toast from 'react-hot-toast';
+ import { reimbursementService } from '../services/reimbursementService';
+ import { STATIC_BASE_URL } from '../services/api';
+@@ -9,6 +10,7 @@ const ReimbursementRequests = () => {
+     const [reimbursements, setReimbursements] = useState([]);
+     const [loading, setLoading] = useState(true);
+     const [actionLoading, setActionLoading] = useState(null);
++    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
+     const [filter, setFilter] = useState('Pending');
+     const [stats, setStats] = useState({ total: 0, pendingCount: 0, approvedValue: 0 });
+ 
+@@ -174,9 +176,9 @@ const ReimbursementRequests = () => {
+                                             {new Date(req.expenseDate).toLocaleDateString()}
+                                             <div className="mt-1">
+                                                 <span className={`px - 2 py - 0.5 rounded - md text - [10px] font - black uppercase tracking - wider ${req.status === 'Pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400' :
+-                                                        req.status === 'Manager Approved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400' :
+-                                                            req.status === 'Approved' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400' :
+-                                                                'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
++                                                    req.status === 'Manager Approved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400' :
++                                                        req.status === 'Approved' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400' :
++                                                            'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                                                     } `}>
+                                                     {req.status}
+                                                 </span>
+@@ -197,11 +199,18 @@ const ReimbursementRequests = () => {
+                                         </td>
+                                         <td className="p-4 text-right">
+                                             {req.status === 'Pending' ? (
+-                                                <div className="space-x-2 flex justify-end">
++                                                <div className="space-x-2 flex justify-end items-center">
++                                                    <button
++                                                        onClick={() => setChatModal({ isOpen: true, contextId: req._id })}
++                                                        className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold text-sm"
++                                                    >
++                                                        <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
++                                                        Discuss
++                                                    </button>
+                                                     <button
+                                                         onClick={() => handleAction(req._id, 'approve')}
+                                                         disabled={actionLoading === req._id}
+-                                                        className="inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold disabled:opacity-50"
++                                                        className="inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold disabled:opacity-50 text-sm"
+                                                     >
+                                                         <CheckCircleIcon className="w-4 h-4 mr-1.5" />
+                                                         Approve
+@@ -209,14 +218,23 @@ const ReimbursementRequests = () => {
+                                                     <button
+                                                         onClick={() => handleAction(req._id, 'reject')}
+                                                         disabled={actionLoading === req._id}
+-                                                        className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60 rounded-xl transition-colors font-semibold disabled:opacity-50"
++                                                        className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60 rounded-xl transition-colors font-semibold disabled:opacity-50 text-sm"
+                                                     >
+                                                         <XCircleIcon className="w-4 h-4 mr-1.5" />
+                                                         Reject
+                                                     </button>
+                                                 </div>
+                                             ) : (
+-                                                <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Processed</span>
++                                                <div className="space-x-2 flex justify-end items-center">
++                                                    <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mr-2">Processed</span>
++                                                    <button
++                                                        onClick={() => setChatModal({ isOpen: true, contextId: req._id })}
++                                                        className="inline-flex items-center px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 rounded-xl transition-colors font-semibold text-xs"
++                                                    >
++                                                        <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
++                                                        View Chat
++                                                    </button>
++                                                </div>
+                                             )}
+                                         </td>
+                                     </tr>
+@@ -226,6 +244,14 @@ const ReimbursementRequests = () => {
+                     </table>
+                 </div>
+             </div>
++
++            <ChatModal
++                isOpen={chatModal.isOpen}
++                onClose={() => setChatModal({ isOpen: false, contextId: null })}
++                contextType="reimbursement"
++                contextId={chatModal.contextId}
++                title="Expense Claim Discussion"
++            />
+         </div>
+     );
+ };
+diff --git a/frontend/src/routes/ProtectedRoutes.jsx b/frontend/src/routes/ProtectedRoutes.jsx
+index 2e0d47f..c45364b 100644
+--- a/frontend/src/routes/ProtectedRoutes.jsx
++++ b/frontend/src/routes/ProtectedRoutes.jsx
+@@ -18,6 +18,10 @@ export const ProtectedRoute = ({ allowedRoles }) => {
+     }
+ 
+     if (allowedRoles && !allowedRoles.includes(user.role)) {
++        // Special exemption: If checking for Admin and the user is an active acting admin, let them through
++        if (allowedRoles.includes('Admin') && user.isActingAdmin) {
++            return <Outlet />;
++        }
+         return <Navigate to="/dashboard" replace />;
+     }
+ 

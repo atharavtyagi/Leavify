@@ -15,6 +15,14 @@ const Navbar = ({ onMenuClick }) => {
     const notificationRef = useRef(null);
     const [hasUnread, setHasUnread] = useState(false);
 
+    const markAsRead = async (notifId) => {
+        try {
+            await api.patch(`/notifications/${notifId}/read`);
+            setNotifications(prev => prev.filter(n => n.dbId !== notifId));
+            setHasUnread(notifications.some(n => n.isAlert && n.dbId !== notifId));
+        } catch (err) { }
+    };
+
     // Fetch dynamic live notifications based on role
     useEffect(() => {
         const fetchNotifications = async () => {
@@ -166,6 +174,26 @@ const Navbar = ({ onMenuClick }) => {
                     }
                 }
 
+                // Merge in real DB notifications for Managers (like Admin Leave updates)
+                try {
+                    const dbNotifsRes = await api.get('/notifications').catch(() => ({ data: { data: [] } }));
+                    const dbNotifs = dbNotifsRes.data.data || [];
+                    dbNotifs.forEach(n => {
+                        if (!n.read) {
+                            newNotifs.push({
+                                id: `db_${n._id}`,
+                                dbId: n._id,
+                                title: n.type === 'admin_leave' ? 'Admin Leave Update' : 'New Alert',
+                                message: n.message,
+                                time: new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                isAlert: true,
+                                link: null,
+                                read: n.read
+                            });
+                        }
+                    });
+                } catch (err) { }
+
                 // Default empty state handling
                 if (newNotifs.length === 0) {
                     newNotifs.push({
@@ -259,12 +287,27 @@ const Navbar = ({ onMenuClick }) => {
                                                 </p>
                                                 <p className={`text-xs mt-1 ${notif.isAlert ? 'text-red-600 dark:text-red-300' : 'text-slate-500 dark:text-zinc-400'}`}>{notif.message}</p>
                                                 <p className={`text-xs mt-2 ${notif.isAlert ? 'text-red-500 dark:text-red-400 font-bold' : 'text-slate-400 dark:text-zinc-500'}`}>{notif.time}</p>
+                                                <p className="text-xs mt-2 text-slate-400 dark:text-zinc-500">{notif.time}</p>
                                             </Link>
                                         ) : (
-                                            <div key={notif.id} className="p-4 border-b border-white/40 dark:border-white/10 hover:bg-white/50 dark:hover:bg-white/5 transition-colors cursor-pointer">
-                                                <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{notif.title}</p>
-                                                <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{notif.message}</p>
-                                                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-2">{notif.time}</p>
+                                            <div key={notif.id} className={`p-4 border-b border-white/40 dark:border-white/10 hover:bg-white/50 dark:hover:bg-white/5 transition-colors cursor-pointer ${notif.isAlert ? 'bg-indigo-50/50 dark:bg-indigo-900/20' : ''}`} onClick={() => notif.dbId && markAsRead(notif.dbId)}>
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <p className={`text-sm font-semibold ${notif.isAlert ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-800 dark:text-zinc-100'}`}>
+                                                            {notif.isAlert && '🔔 '}{notif.title}
+                                                        </p>
+                                                        <p className={`text-xs mt-1 ${notif.isAlert ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-zinc-400'}`}>{notif.message}</p>
+                                                        <p className="text-xs mt-2 text-slate-400 dark:text-zinc-500 font-medium">{notif.time}</p>
+                                                    </div>
+                                                    {notif.dbId && (
+                                                        <button 
+                                                            className="text-xs bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300 px-2 py-1 rounded hover:bg-indigo-200"
+                                                            onClick={(e) => { e.stopPropagation(); markAsRead(notif.dbId); }}
+                                                        >
+                                                            Dismiss
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                         )
                                     ))}

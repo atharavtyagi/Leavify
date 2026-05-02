@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { DocumentTextIcon, CheckCircleIcon, ClockIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { DocumentTextIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
 import EmptyState from '../components/EmptyState';
+import ChatModal from '../components/ChatModal';
+import { useAuth } from '../context/AuthContext';
 
 const LeaveRequests = () => {
     const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0 });
@@ -10,8 +12,11 @@ const LeaveRequests = () => {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('Pending');
     const [actionModal, setActionModal] = useState({ show: false, leaveId: null, action: '' });
+    const [chatModal, setChatModal] = useState({ isOpen: false, contextId: null });
     const [managerComment, setManagerComment] = useState('');
     const [conflict, setConflict] = useState({ isConflict: false, reason: '' });
+    const { user } = useAuth();
+    const isViewOnly = user?.isCurrentlyOnLeave;
 
     useEffect(() => {
         fetchLeaves();
@@ -66,8 +71,22 @@ const LeaveRequests = () => {
             }
         }
     };
+    
+    const handleAcknowledge = async (leaveId) => {
+        try {
+            await api.post(`/leaves/${leaveId}/review`);
+            toast.success('Approval acknowledged successfully.');
+            fetchLeaves();
+        } catch (error) {
+            toast.error(error.response?.data?.error || 'Failed to acknowledge');
+        }
+    };
 
-    const filteredLeaves = leaves.filter(leave => filter === 'All' ? true : leave.status === filter);
+    const filteredLeaves = leaves.filter(leave => {
+        if (filter === 'All') return true;
+        if (filter === 'RequiresReview') return leave.needsManagerReview;
+        return leave.status === filter;
+    });
 
     const checkConflict = (pendingLeave) => {
         if (pendingLeave.status !== 'Pending' || !pendingLeave.employee || !pendingLeave.employee.department) return { isConflict: false };
@@ -122,6 +141,7 @@ const LeaveRequests = () => {
                     >
                         <option value="All">All Requests</option>
                         <option value="Pending">Pending Only</option>
+                        <option value="RequiresReview">Requires Review</option>
                         <option value="Approved">Approved Only</option>
                         <option value="Rejected">Rejected Only</option>
                     </select>
@@ -224,13 +244,20 @@ const LeaveRequests = () => {
                                                 </span>
                                             )}
                                         </div>
-                                        {leave.backupEmployee && (
+                                        {leave.actingManager && (
                                             <div className="mt-1">
                                                 <span
                                                     className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${leave.backupConfirmed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                                                         }`}
                                                 >
-                                                    Cover: {leave.backupEmployee.name} ({leave.backupConfirmed ? 'Confirmed' : 'Pending'})
+                                                    Acting Manager: {leave.actingManager.name} ({leave.backupConfirmed ? 'Confirmed' : 'Pending'})
+                                                </span>
+                                            </div>
+                                        )}
+                                        {leave.needsManagerReview && (
+                                            <div className="mt-1">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                                                    Required: Manager Review
                                                 </span>
                                             </div>
                                         )}
@@ -252,24 +279,54 @@ const LeaveRequests = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right whitespace-nowrap text-sm font-medium">
                                         {leave.status === 'Pending' ? (
-                                            <div className="space-x-2 flex justify-end">
+                                            <div className="space-x-2 flex justify-end items-center">
+                                                <button
+                                                    onClick={() => setChatModal({ isOpen: true, contextId: leave._id })}
+                                                    className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 rounded-xl transition-colors font-semibold"
+                                                >
+                                                    <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
+                                                    Discuss
+                                                </button>
                                                 <button
                                                     onClick={() => handleActionClick(leave._id, 'Approved')}
-                                                    className="inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold"
+                                                    disabled={isViewOnly}
+                                                    className={`inline-flex items-center px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:hover:bg-green-900/60 rounded-xl transition-colors font-semibold ${isViewOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    title={isViewOnly ? "Approvals disabled during leave" : ""}
                                                 >
                                                     <CheckCircleIcon className="w-4 h-4 mr-1.5" />
                                                     Approve
                                                 </button>
                                                 <button
                                                     onClick={() => handleActionClick(leave._id, 'Rejected')}
-                                                    className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60 rounded-xl transition-colors font-semibold"
+                                                    disabled={isViewOnly}
+                                                    className={`inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60 rounded-xl transition-colors font-semibold ${isViewOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    title={isViewOnly ? "Rejections disabled during leave" : ""}
                                                 >
                                                     <XCircleIcon className="w-4 h-4 mr-1.5" />
                                                     Reject
                                                 </button>
                                             </div>
                                         ) : (
-                                            <span className="text-gray-400">Processed</span>
+                                            <div className="space-x-2 flex justify-end items-center">
+                                                {leave.needsManagerReview ? (
+                                                    <button
+                                                        onClick={() => handleAcknowledge(leave._id)}
+                                                        className="inline-flex items-center px-3 py-1.5 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/40 dark:text-orange-400 dark:hover:bg-orange-900/60 rounded-xl transition-colors font-semibold shadow-sm border border-orange-200 dark:border-orange-800/30"
+                                                    >
+                                                        <CheckCircleIcon className="w-4 h-4 mr-1.5" />
+                                                        Acknowledge
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-gray-400 font-semibold mr-2 px-3 py-1.5 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 text-xs">Processed</span>
+                                                )}
+                                                <button
+                                                    onClick={() => setChatModal({ isOpen: true, contextId: leave._id })}
+                                                    className="inline-flex items-center px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 rounded-xl transition-colors font-semibold text-xs"
+                                                >
+                                                    <ChatBubbleLeftEllipsisIcon className="w-4 h-4 mr-1.5" />
+                                                    View Chat
+                                                </button>
+                                            </div>
                                         )}
                                     </td>
                                 </tr>
@@ -338,6 +395,14 @@ const LeaveRequests = () => {
                     </div>
                 </div>
             )}
+
+            <ChatModal
+                isOpen={chatModal.isOpen}
+                onClose={() => setChatModal({ isOpen: false, contextId: null })}
+                contextType="leave"
+                contextId={chatModal.contextId}
+                title="Leave Application Discussion"
+            />
         </div>
     );
 };
